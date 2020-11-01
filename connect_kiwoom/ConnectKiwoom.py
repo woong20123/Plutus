@@ -1,4 +1,5 @@
 import sys
+import csv
 
 from PyQt5.QAxContainer import *
 from PyQt5.QtGui import *
@@ -57,26 +58,30 @@ class MyWindow(QMainWindow):
 
     # 마켓 정보 가져오기
     def getCodebtn_clicked(self):
-        codeList = self.get_MarketList('kospi')
-        self.listWidget.addItems(codeList)
-        self.text_edit.append('kospi MarkerCode Count = ' +  str(len(codeList)))
+        stockInfoList = self.get_MarketList('kospi')
+        self.text_edit.append('kospi MarkerCode Count = ' +  str(len(stockInfoList)))
+
+        with open('C:/Users/Kim/Documents/Plutus/DataBase/StockInfo.csv','w+' , encoding='utf-8', newline='') as f :            
+            writer = csv.writer(f)
+            for stockInfo in stockInfoList:
+                writer.writerow(stockInfo)
 
     def get_MarketList(self, marketType):
         callRet = ''
-        code_name_list =[]
+        stockInfoList =[]
         if marketType == 'kospi':
             callRet = self.kiwoom.dynamicCall('GetCodeListByMarket(QString)', ['0'])
         elif marketType == 'kosdaq':
             callRet = self.kiwoom.dynamicCall('GetCodeListByMarket(QString)', ['10'])
         else :
-            return code_name_list
+            return stockInfoList
 
         code_list = callRet.split(';')
 
         for x in code_list :
             name = self.kiwoom.dynamicCall('GetMasterCodeName(QString)', [x])
-            code_name_list.append(x + ' : ' + name)
-        return code_name_list
+            stockInfoList.append([x,name])
+        return stockInfoList
 
 
     # 접속 이벤트 콜백 함수
