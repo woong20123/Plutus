@@ -1,5 +1,6 @@
 import sqlite3
 import csv
+import json
 
 # Sqlite DB 연결
 def SqliteConn(sqlitePath):
@@ -28,14 +29,14 @@ def InsertFromList(dbconn, sql, ColList):
         cursor = dbconn.cursor()
         cursor.execute(sql,cols)
     dbconn.commit()
-    print("insert 완료 " + sql + " from list" + " Count : " + str(len(ColList)))
+    return "insert 완료 " + sql + " from list" + " Count : " + str(len(ColList))
 
 # CSV파일을 Mysql에 insert 합니다.
 def InsertFromCSV(dbconn, sql, csvPath):
     f=open(csvPath,'r' , encoding='utf-8')
     csvReader=csv.reader(f)
     lineCount = 0
-    RetList = []
+    ColList = []
     for row in csvReader :
         colCount = len(row)
         if(lineCount > 0):
@@ -43,6 +44,17 @@ def InsertFromCSV(dbconn, sql, csvPath):
             # 컬럼을 만듭니다.
             for i in range(0, colCount):
                 inputParam.append(row[i])
-            RetList.append(inputParam)
+            ColList.append(inputParam)
         lineCount+=1
-    InsertFromList(dbconn, sql, RetList)
+    return InsertFromList(dbconn, sql, ColList)
+
+def InsertFromJSON(dbconn, sql, jsonString):
+    ColList = []
+    insertDatas = json.loads(jsonString)
+    for row in insertDatas :
+        inputParam = []
+        for key, value in row.items():
+            inputParam.append(value)
+        ColList.append(inputParam)
+    return InsertFromList(dbconn, sql, ColList)
+            

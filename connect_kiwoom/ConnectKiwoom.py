@@ -1,19 +1,23 @@
 #-*-coding:utf-8 -*-
 
 import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 import csv
 
 import json
 from PyQt5.QAxContainer import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
+from connect_sqlite.ConnectSqlite import *
+from connect_sqlite.SqliteLogic import *
 
 
 class MyWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('Plutus')
-        self.setGeometry(200, 200, 600, 800)
+        self.setGeometry(200, 200, 1200, 800)
 
         # 키움 OpenAPI 라이브러리 추가 
         self.kiwoom = QAxWidget('KHOPENAPI.KHOpenAPICtrl.1')
@@ -23,36 +27,64 @@ class MyWindow(QMainWindow):
         self.text_edit.setGeometry(10, 260, 560, 200)
         self.text_edit.setEnabled(False)
 
+        ######## [입력] ########
+
         # 코드 검색용 UI 인터페이스
         label = QLabel('종목코드 : ', self)
-        label.move(20, 20)
+        label.setGeometry(20, 20, 150, 30)
 
         self.code_edit = QLineEdit(self)
-        self.code_edit.move(80, 20)
+        self.code_edit.move(150, 20)
         self.code_edit.setText('039490')
 
-        # 조회용 버튼 클릭
-        findbtn = QPushButton('조회', self)
-        findbtn.move(190, 20)
-        findbtn.clicked.connect(self.findbtn_clicked)
-
-        # 종목 코드 얻는 버튼 
-        getCodebtn = QPushButton('종목코드 얻기', self)
-        getCodebtn.move(190, 60)
-        getCodebtn.clicked.connect(self.getCodebtn_clicked)
-
+        ######## [계좌 정보 조회] ########
+        label = QLabel('[계좌 정보 조회] ', self)
+        label.setGeometry(10, 120, 150, 30)
         # 버튼 
-        getAccountbtn = QPushButton('계좌 정보 조회', self)
-        getAccountbtn.move(190, 100)
+        getAccountbtn = QPushButton('계좌 정보 셋팅', self)
+        getAccountbtn.move(20, 150)
         getAccountbtn.clicked.connect(self.getAccountbtn_clicked)
 
+
+        ######## [주식당 매입 금액] ########
+        label = QLabel('[주식당 매입기준금액] ', self)
+        label.setGeometry(10, 60, 150, 30)
+
+        self.stock_per_purchase_edit = QLineEdit(self)
+        self.stock_per_purchase_edit.setGeometry(20, 90, 80, 30)
+        self.stock_per_purchase_edit.setText('280')
+
+        # 버튼 
+        stock_per_purchase_btn = QPushButton('주식당 매입 금액 셋팅', self)
+        stock_per_purchase_btn.setGeometry(120, 90, 150, 30)
+        stock_per_purchase_btn.clicked.connect(self.stock_per_purchase_btn_clicked)
+
+        ######## [버튼] ########
+
+        # 버튼 
+        findbtn = QPushButton('조회', self)
+        findbtn.move(600, 20)
+        findbtn.clicked.connect(self.findbtn_clicked)
+
+        # 버튼 
+        getCodebtn = QPushButton('종목코드 얻기', self)
+        getCodebtn.move(600, 60)
+        getCodebtn.clicked.connect(self.getCodebtn_clicked)
+
+        
+
         self.listWidget = QListWidget(self)
-        self.listWidget.setGeometry(10, 60, 170, 130)
+        self.listWidget.setGeometry(700, 60, 170, 130)
 
         # 콜백이벤트 등록
         self.kiwoom.OnEventConnect.connect(self.on_connect)
         self.kiwoom.OnReceiveTrData.connect(self.on_receiveTr)
 
+        # sqlite conn
+        self.conn = SqliteConn(os.getcwd() + '/DataBase/Plutus.sqlite3')
+
+    def __del__(self):
+        self.conn.close()
 
     # 검색용 버튼 클릭 이벤트 함수
     def findbtn_clicked(self):
@@ -80,7 +112,20 @@ class MyWindow(QMainWindow):
             for stockInfo in stockInfoList:
                 writer.writerow(stockInfo)
 
-    
+    def stock_per_purchase_btn_clicked(self):
+        stock_per_purchase_base = int(self.stock_per_purchase_edit.text())
+        stock_per_purchase_list = []
+
+        stock_per_purchase_metas = [('상', 1.5),('중', 0.9),('하', 0.6)]
+        for meta in stock_per_purchase_metas:
+            stock_per_purchase = {}
+            stock_per_purchase['type'] = meta[0]
+            stock_per_purchase['purchase'] = stock_per_purchase_base * meta[1]
+            stock_per_purchase_list.append(stock_per_purchase)
+
+        stock_per_purchase_json = json.dumps(stock_per_purchase_list, ensure_ascii=False)
+
+        self.text_edit.append(InsertPurchasePerStockFromJson(self.conn, stock_per_purchase_json))
 
     # 마켓 정보리스트 가져오기
     def get_MarketList(self, marketType):
@@ -127,12 +172,14 @@ class MyWindow(QMainWindow):
             data_count = self.kiwoom.dynamicCall("GetRepeatCnt(QString, QString)", trcode, rqname)
             for i in range(data_count):
                 stock_data = {}
+                stock_data['code']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '종목코드')
                 stock_data['name']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '종목명').strip()
-                stock_data['buy_price']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '매입금액').strip()
-                stock_data['cur_price']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '평가금액').strip()
+                stock_data['buy_total_price']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '매입금액').strip()
+                stock_data['cur_price']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '현재가').replace('-','').strip()
+                stock_data['hava_count']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '보유수량').strip()
                 stock_dataList.append(stock_data)
             stock_data_json = json.dumps(stock_dataList, ensure_ascii=False)
-            self.text_edit.append('계좌평가현황: ' + stock_data_json)
+            self.text_edit.append(InsertHaveStockInfoFromJson(self.conn, stock_data_json))
 
 if __name__ == '__main__' :
     app = QApplication(sys.argv)

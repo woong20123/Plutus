@@ -1,42 +1,72 @@
-import ConnectSqlite
+import os
+import sys
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+from connect_sqlite.ConnectSqlite import *
 
-basePath='C:/Users/Kim/Documents/Plutus/'
+
 
 # Stock정보 입력
 def SetStockInfo(conn):
-    ConnectSqlite.TruncateTable(conn, 'stock_info')
+    TruncateTable(conn, 'stock_info')
     sql = '''
     INSERT INTO stock_info ("code", "name")
     VALUES (?, ?)
     '''
-    ConnectSqlite.InsertFromCSV(conn,sql, basePath + 'DataBase/StockInfo.csv')
+    InsertFromCSV(conn,sql, os.getcwd() + '/DataBase/StockInfo.csv')
 
 # Target Stock정보 입력
 def SetTargetInfo(conn):
-    ConnectSqlite.TruncateTable(conn, 'target_stock_info')
+    TruncateTable(conn, 'target_stock_info')
     sql = '''
     INSERT INTO target_stock_info ("name", "sell_target_price", "buy_target_price", "stock_type", "current_price", "invest_grade")
     VALUES (?, ?, ?, ?, ?, ?)
     '''
-    ConnectSqlite.InsertFromCSV(conn,sql, basePath + 'DataBase/target_stock.csv')
+    InsertFromCSV(conn,sql, os.getcwd() + + '/DataBase/target_stock.csv')
 
-# 가지고 있는 주식 정보 추가 
-def SetHaveStockInfo(conn):
-    ConnectSqlite.TruncateTable(conn, 'have_stock_info')
+# 가지고 있는 주식 정보 Insert 
+
+def CreateHaveStockInfo(conn):
+    TruncateTable(conn, 'have_stock_info')
     sql = '''
-    INSERT INTO have_stock_info ("code", "name", "buy_amount")
-    VALUES (?, ?, ?)
+    CREATE TABLE "have_stock_info" (
+	"code"	TEXT NOT NULL,
+	"name"	TEXT NOT NULL,
+	"buy_total_price"	INTEGER NOT NULL,
+	"cur_price"	INTEGER NOT NULL,
+	"have_count"	INTEGER NOT NULL,
+	PRIMARY KEY("name"));
     '''
-    ConnectSqlite.InsertFromCSV(conn,sql, basePath + 'DataBase/target_stock.csv')
+    BasicSqlExecute(conn,sql)
+
+InsertHaveStockInfoSQL = '''
+    INSERT INTO have_stock_info ("code", "name", "buy_total_price", "cur_price", "have_count")
+    VALUES (?, ?, ?, ?, ?)
+    '''
+def InsertHaveStockInfoFromJson(conn, jsonString):
+    TruncateTable(conn, 'have_stock_info')
+    return InsertFromJSON(conn,InsertHaveStockInfoSQL, jsonString)
+
+def InsertHaveStockInfoFromCsv(conn, csv_file):
+    TruncateTable(conn, 'have_stock_info')
+    return InsertFromCSV(conn,InsertHaveStockInfoSQL, os.getcwd() + csv_file)
+
+InsertPurchasePerStockSQL = '''
+    INSERT INTO purchase_per_stock ("type", "purchase")
+    VALUES (?, ?)
+    '''
+def InsertPurchasePerStockFromJson(conn, jsonString):
+    TruncateTable(conn, 'purchase_per_stock')
+    return InsertFromJSON(conn,InsertPurchasePerStockSQL, jsonString)
+    
 
 def SetMetaData(conn):
-    ConnectSqlite.TruncateTable(conn, 'meta_stock_data')
+    TruncateTable(conn, 'meta_stock_data')
     # 주식당 할당 매입 금액
     sql = 'INSERT INTO meta_stock_data (name, value) VALUES ("alloc amount per stock", "280")'
-    ConnectSqlite.BasicSqlExecute(conn, sql)
+    BasicSqlExecute(conn, sql)
 
 if __name__ == '__main__' :
-    conn = ConnectSqlite.SqliteConn(basePath + 'DataBase/Plutus.sqlite3')
+    conn = SqliteConn(os.getcwd() + '/DataBase/Plutus.sqlite3')
     
     SetStockInfo(conn)
     SetTargetInfo(conn)
