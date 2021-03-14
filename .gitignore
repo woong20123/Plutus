@@ -4,3 +4,4 @@
 .vscode/
 KOA/*.exe
 KOA/*.dll
+*result.txt
