@@ -1,5 +1,7 @@
 #-*-coding:utf-8 -*-
 
+# python.exe -m pip install future-fstrings 설치 필요
+
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
@@ -22,6 +24,22 @@ def make_movin_average_line(arr, start_index, term) :
     for i in range(0, term) :
         total += arr[start_index + i]
     return total / term
+
+def find_highvolume_and_highprice(arr, start_index, term) : 
+    if term == 0 :
+        return False
+
+    volumes = arr[start_index:start_index+term];
+    volumes.sort(reverse=True)
+    high_volume = volumes[0]
+    avg_volume = sum(volumes[2:])/len(volumes[2:])
+
+    if avg_volume < 1000 : 
+        return False
+
+    if high_volume > avg_volume * 5 :
+        return True
+    return False
 
 class MyWindow(QMainWindow):
     def __init__(self):
@@ -88,16 +106,24 @@ class MyWindow(QMainWindow):
     # opt10081 : 주식 일봉 차트 조회 요청 
     def day_chart_query(self, date, start_idx) :
 
+        with open("day_result.txt", "a") as f:
+            f.writelines(f"day_chart_query start start_idx('{start_idx}')\n")
+
         stockInfo_list_size = len(self.stockInfo_list)
-        idx = 0
+        self.day_chart_query_idx = 0
         for code, name in self.stockInfo_list.items():
-            idx += 1;
+            self.day_chart_query_idx += 1;
+
+            if self.day_chart_query_idx % 100 == 0 : 
+                with open("day_result.txt", "a") as f:
+                    f.writelines(f"day_chart_query call : '{self.day_chart_query_idx}'\n")                    
+
             if code == "" : 
                 continue
-            if idx < start_idx  :
+            if self.day_chart_query_idx < start_idx  :
                 continue
-            if '(H)' in name or 'TIGER ' in name or 'KODEX ' in name or 'ARIRANG ' in name or 'KINDEX ' in name  or 'KBSTAR ' in name or 'KOSEF ' in name :
-                print("day_chart_query fail name ("+ str(idx) + "/" + str(stockInfo_list_size) + ")" + name)
+            if '(H)' in name or 'TIGER ' in name or 'KODEX ' in name or 'ARIRANG ' in name or 'KINDEX ' in name  or 'KBSTAR ' in name or 'KOSEF ' in name or ' ETN' in name :
+                print("day_chart_query fail name ("+ str(self.day_chart_query_idx) + "/" + str(stockInfo_list_size) + ")" + name)
                 continue
 
             self.kiwoom.dynamicCall('SetInputValue(QString, QString)', '종목코드', code)
@@ -106,7 +132,7 @@ class MyWindow(QMainWindow):
 
             self.comm_rq_data('opt10081_req', "opt10081",  0, '10081')        
 
-            print("day_chart_query call ("+ str(idx) + "/" + str(stockInfo_list_size) + ")" + name)
+            self.text_edit.append(f"day_chart_query call ('{str(self.day_chart_query_idx)}'/'{str(stockInfo_list_size)}')'{name}'")
 
     # opt10001 조회 
     def condition_search(self, code):
@@ -188,57 +214,82 @@ class MyWindow(QMainWindow):
         elif rqname == 'opt10081_req':
             ok, code, stock_data = self._opt10081(screen_no, rqname, trcode)
             if ok : 
-                check_ok = self.check_120day_logic(stock_data)
+                check_ok, day = self.check_day_logic(stock_data)
                 if check_ok :
                     self.logic_120day_result[code] = stock_data
-                    self.text_edit.append('120로직 : ' + self.getStockName(code)) 
-                    with open("120day_result.txt", "a") as f:
-                        f.writelines(self.getStockName(code))
+                    self.listWidget.addItem('['+ str(day) +'로직] : '+ str(self.day_chart_query_idx) + " = " + self.getStockName(code)) 
+                    with open("day_result.txt", "a") as f:
+                        f.writelines('['+ str(day) +'로직] : ' + str(self.day_chart_query_idx) + " = " + self.getStockName(code) + "\n")
 
         try:
             self.kiwoom.tr_event_loop.exit()
         except AttributeError:
             pass
 
-        sleep(0.7)
+        sleep(1)
     
     # day_chart_query 응답 처리
     def _opt10081(self, screen_no, rqname, trcode) :
         data_count = self.kiwoom.dynamicCall("GetRepeatCnt(QString, QString)", trcode, rqname)
         code = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, 0, '종목코드').strip();  
         stock_data = {}
-        print("on_day_chart_query call " + code)
+        self.text_edit.append("on_day_chart_query call " + self.getStockName(code))
 
         if data_count < 120 :
             return False, code, stock_data
         
         stock_data['stock_info'] = []
         stock_data['cur_prices'] = []
+        stock_data['cur_volumes'] = []
         # 데이터 전달 받기 
         for i in range(data_count):
             stock_info = {}
             stock_info['date']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '일자').strip()
-            stock_info['cur_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '현재가').replace('-','').strip()
+            stock_info['cur_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '현재가').replace('-','').strip()            
+            stock_info['high_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '고가').replace('-','').strip()
+            stock_info['low_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '저가').replace('-','').strip()
+            stock_info['start_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '시가').replace('-','').strip()
+            stock_info['cur_volume'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래량').replace('-','').strip()
+            stock_info['volume_cash'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래대금').replace('-','').strip()
+            stock_info['target_info'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '종목정보').replace('-','').strip()
 
             stock_data['cur_prices'].append(int(stock_info['cur_price']))
+            stock_data['cur_volumes'].append(int(stock_info['cur_volume']))
             stock_data['stock_info'].append(stock_info)
         
         return True, code, stock_data;
     
     # 120일선 체크 로직 
-    def check_120day_logic(self, stock_data):
+    def check_day_logic(self, stock_data):
         cur_price = int(stock_data['stock_info'][0]['cur_price'])
+        yesterday_price = int(stock_data['stock_info'][1]['cur_price'])
+        
+        # 거래량 체크
+        ishighvolume = find_highvolume_and_highprice(stock_data['cur_volumes'], 0, 30)
+        if False == ishighvolume:
+            return False, 0
+
+        ma_line_10 =  make_movin_average_line(stock_data['cur_prices'], 0, 10)
         ma_line_20 =  make_movin_average_line(stock_data['cur_prices'], 0, 20)
         ma_line_60 =  make_movin_average_line(stock_data['cur_prices'], 0, 60)
         ma_line_120 =  make_movin_average_line(stock_data['cur_prices'], 0, 120)
 
-        if False == (ma_line_20 > ma_line_60 and ma_line_60 > ma_line_120 * 1.02) :
-            return False
+        if False == (ma_line_20 > ma_line_60 and ma_line_60 > ma_line_120) :
+            return False, 0
 
-        if False == (cur_price * 1.02 > ma_line_120 and ma_line_120 > cur_price * 0.99) :
-            return False
+        # 120일 선 체크
+        if (cur_price * 1.02 > ma_line_120 and ma_line_120 > cur_price * 0.995) and ( yesterday_price > ma_line_120) :
+            return True, 120
 
-        return True
+        # 60일 선 체크
+        if (cur_price * 1.02 > ma_line_60 and ma_line_60 > cur_price * 0.995) and ( yesterday_price > ma_line_60) :
+            return True, 60
+
+        # 20일 선 체크
+        if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) :
+            return True, 20
+
+        return False, 0
 
     def comm_rq_data(self, rqname, trcode, next, screen_no):
         self.kiwoom.dynamicCall("CommRqData(QString, QString, int, QString", rqname, trcode, next, screen_no)
