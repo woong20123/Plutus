@@ -4,6 +4,7 @@
 
 import sys
 import os
+import random
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 import csv
 from time import sleep
@@ -25,19 +26,53 @@ def make_movin_average_line(arr, start_index, term) :
         total += arr[start_index + i]
     return total / term
 
-def find_highvolume_and_highprice(arr, start_index, term) : 
-    if term == 0 :
-        return False
+def get_rate_of_rise(arr, date) : 
+    get_stock_info = None
+    yesterday_price = 0
+    yesterday_index = 0
+    for stock_info in arr[:-2] :
+        yesterday_index += 1
+        if( stock_info['date'] == date) :
+            get_stock_info = stock_info
+            yesterday_price = arr[yesterday_index]['cur_price']
+            break;
 
-    volumes = arr[start_index:start_index+term];
-    volumes.sort(reverse=True)
-    high_volume = volumes[0]
-    avg_volume = sum(volumes[2:])/len(volumes[2:])
+    if get_stock_info == None :
+        return 0
+
+    diff_price = get_stock_info['cur_price'] - yesterday_price;
+    return (diff_price / yesterday_price) * 100
+
+
+# 최근 거래량이 많았던 적이 있는지 체크합니다.
+def find_highvolume(arr, start_index, term) : 
+    high_volume = None
+    if term == 0 :
+        return False, high_volume
+
+    arr_volume_sort = sorted(arr[start_index:start_index+term], key=lambda x : (-x['cur_volume']))
+
+    high_volume = arr_volume_sort[0]
+
+    avg_sum_volume = 0
+    for value in arr_volume_sort[2:] :
+        avg_sum_volume += value['cur_volume']
+
+    avg_volume = avg_sum_volume/len(arr_volume_sort[2:])
 
     if avg_volume < 1000 : 
-        return False
+        return False, high_volume
 
-    if high_volume > avg_volume * 5 :
+    if high_volume['cur_volume'] > avg_volume * 6 :
+        return True, high_volume
+    return False, high_volume
+
+# 2일간 거래량이 줄고 있는지 체크
+def check_volume_down(arr, start_index) : 
+    today_vol = arr[start_index]['cur_volume']
+    one_before_day_vol = arr[start_index+1]['cur_volume']
+    two_before_day_vol = arr[start_index+2]['cur_volume']
+    if today_vol < one_before_day_vol and one_before_day_vol < two_before_day_vol :
         return True
     return False
 
@@ -101,12 +136,12 @@ class MyWindow(QMainWindow):
 
         start_idx = int(self.index_text_edit.text())
 
-        self.day_chart_query('20210312', start_idx)
+        self.day_chart_query('20210316', start_idx)
             
     # opt10081 : 주식 일봉 차트 조회 요청 
     def day_chart_query(self, date, start_idx) :
 
-        with open("day_result.txt", "a") as f:
+        with open("plog.log", "a") as f:
             f.writelines(f"day_chart_query start start_idx('{start_idx}')\n")
 
         stockInfo_list_size = len(self.stockInfo_list)
@@ -115,7 +150,7 @@ class MyWindow(QMainWindow):
             self.day_chart_query_idx += 1;
 
             if self.day_chart_query_idx % 100 == 0 : 
-                with open("day_result.txt", "a") as f:
+                with open("plog.log", "a") as f:
                     f.writelines(f"day_chart_query call : '{self.day_chart_query_idx}'\n")                    
 
             if code == "" : 
@@ -214,19 +249,30 @@ class MyWindow(QMainWindow):
         elif rqname == 'opt10081_req':
             ok, code, stock_data = self._opt10081(screen_no, rqname, trcode)
             if ok : 
-                check_ok, day = self.check_day_logic(stock_data)
-                if check_ok :
-                    self.logic_120day_result[code] = stock_data
-                    self.listWidget.addItem('['+ str(day) +'로직] : '+ str(self.day_chart_query_idx) + " = " + self.getStockName(code)) 
-                    with open("day_result.txt", "a") as f:
-                        f.writelines('['+ str(day) +'로직] : ' + str(self.day_chart_query_idx) + " = " + self.getStockName(code) + "\n")
+                stock_info_len = len(stock_data['stock_info']) - 121;
+
+                # 150일이 넘으면 150으로 고정
+                if stock_info_len > 350 : 
+                    stock_info_len = 350
+
+                for i in range(0, stock_info_len) :
+                    result, day = self.check_day_logic(stock_data, i)
+                    check_ok = result[0]
+                    date = result[1]
+                    file_name = "day_result_" + str(date) + "_" + str(day) + ".txt"
+                    if check_ok :
+                        self.logic_120day_result[code] = stock_data
+                        msg = f"['{str(date)}']['{str(day)}'로직] : '{str(self.day_chart_query_idx)}' = '{self.getStockName(code)}'"
+                        self.listWidget.addItem(msg)                        
+                        with open('result/' + file_name, "a") as f:
+                            f.writelines(msg + "\n")
 
         try:
             self.kiwoom.tr_event_loop.exit()
         except AttributeError:
             pass
 
-        sleep(1)
+        sleep(0.6)
     
     # day_chart_query 응답 처리
     def _opt10081(self, screen_no, rqname, trcode) :
@@ -240,56 +286,69 @@ class MyWindow(QMainWindow):
         
         stock_data['stock_info'] = []
         stock_data['cur_prices'] = []
-        stock_data['cur_volumes'] = []
         # 데이터 전달 받기 
         for i in range(data_count):
             stock_info = {}
+            stock_info['code'] = code
             stock_info['date']= self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '일자').strip()
-            stock_info['cur_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '현재가').replace('-','').strip()            
-            stock_info['high_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '고가').replace('-','').strip()
-            stock_info['low_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '저가').replace('-','').strip()
-            stock_info['start_price'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '시가').replace('-','').strip()
-            stock_info['cur_volume'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래량').replace('-','').strip()
-            stock_info['volume_cash'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래대금').replace('-','').strip()
-            stock_info['target_info'] = self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '종목정보').replace('-','').strip()
+            stock_info['cur_price'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '현재가').replace('-','').strip())
+            stock_info['high_price'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '고가').replace('-','').strip())
+            stock_info['low_price'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '저가').replace('-','').strip())
+            stock_info['start_price'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '시가').replace('-','').strip())
+            stock_info['cur_volume'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래량').replace('-','').strip())
+            stock_info['volume_cash'] = int(self.kiwoom.dynamicCall('CommGetData(QString, QString, QString, int, QString)', trcode, '', rqname, i, '거래대금').replace('-','').strip())
 
-            stock_data['cur_prices'].append(int(stock_info['cur_price']))
-            stock_data['cur_volumes'].append(int(stock_info['cur_volume']))
+            # 거래량이 최고 일 때 종가가 최소 10% 이상 상승인지 체크하는 로직 추가
+            stock_data['cur_prices'].append( int(stock_info['cur_price']))
             stock_data['stock_info'].append(stock_info)
         
         return True, code, stock_data;
     
     # 120일선 체크 로직 
-    def check_day_logic(self, stock_data):
-        cur_price = int(stock_data['stock_info'][0]['cur_price'])
-        yesterday_price = int(stock_data['stock_info'][1]['cur_price'])
+    def check_day_logic(self, stock_data, stock_info_index) :
+        cur_stockinfo = stock_data['stock_info'][stock_info_index]
+        date = int(cur_stockinfo['date'])
+        cur_price = int(cur_stockinfo['cur_price'])
+        yesterday_price = int(stock_data['stock_info'][stock_info_index+1]['cur_price'])
+        result_fail = (False, date)
+        result_success = (True, date)
         
         # 거래량 체크
-        ishighvolume = find_highvolume_and_highprice(stock_data['cur_volumes'], 0, 30)
+        ishighvolume, high_volume_stock_info = find_highvolume(stock_data['stock_info'], stock_info_index, 30)
         if False == ishighvolume:
-            return False, 0
+            return result_fail, 0
 
-        ma_line_10 =  make_movin_average_line(stock_data['cur_prices'], 0, 10)
-        ma_line_20 =  make_movin_average_line(stock_data['cur_prices'], 0, 20)
-        ma_line_60 =  make_movin_average_line(stock_data['cur_prices'], 0, 60)
-        ma_line_120 =  make_movin_average_line(stock_data['cur_prices'], 0, 120)
+        isdownvolume = check_volume_down(stock_data['stock_info'], stock_info_index)
+        if False == isdownvolume:
+            return result_fail, 0
+
+        ma_line_10 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 10)
+        ma_line_20 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 20)
+        ma_line_60 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 60)
+        ma_line_120 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 120)
 
         if False == (ma_line_20 > ma_line_60 and ma_line_60 > ma_line_120) :
-            return False, 0
+            return result_fail, 0
 
         # 120일 선 체크
         if (cur_price * 1.02 > ma_line_120 and ma_line_120 > cur_price * 0.995) and ( yesterday_price > ma_line_120) :
-            return True, 120
+            return result_success, 120
 
         # 60일 선 체크
-        if (cur_price * 1.02 > ma_line_60 and ma_line_60 > cur_price * 0.995) and ( yesterday_price > ma_line_60) :
-            return True, 60
+        # if (cur_price * 1.02 > ma_line_60 and ma_line_60 > cur_price * 0.995) and ( yesterday_price > ma_line_60) :
+        #     return result_success, 60
+
+        high_v_rate_rise = get_rate_of_rise(stock_data['stock_info'], high_volume_stock_info['date'])
+        
 
         # 20일 선 체크
-        if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) :
-            return True, 20
+        diff_10_20 = ma_line_10 - ma_line_20
+        diff_20_60 = ma_line_20 - ma_line_60
+        if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) and (high_v_rate_rise > 9)  :
+            if ( ma_line_10 > ma_line_20 * 1.025 ) and ( diff_10_20 > diff_20_60 / 2 ):
+                return result_success, 20
 
-        return False, 0
+        return result_fail, 0
 
     def comm_rq_data(self, rqname, trcode, next, screen_no):
         self.kiwoom.dynamicCall("CommRqData(QString, QString, int, QString", rqname, trcode, next, screen_no)
