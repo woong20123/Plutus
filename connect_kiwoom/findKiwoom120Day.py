@@ -47,8 +47,9 @@ def get_rate_of_rise(arr, date) :
 # 최근 거래량이 많았던 적이 있는지 체크합니다.
 def find_highvolume(arr, start_index, term) : 
     high_volume = None
+    avg_volume = None
     if term == 0 :
-        return False, high_volume
+        return False, high_volume, avg_volume
 
     arr_volume_sort = sorted(arr[start_index:start_index+term], key=lambda x : (-x['cur_volume']))
 
@@ -60,21 +61,30 @@ def find_highvolume(arr, start_index, term) :
 
     avg_volume = avg_sum_volume/len(arr_volume_sort[2:])
 
-    if avg_volume < 1000 : 
-        return False, high_volume
+    if avg_volume < 5000 : 
+        return False, high_volume, avg_volume
 
-    if high_volume['cur_volume'] > avg_volume * 6 :
-        return True, high_volume
-    return False, high_volume
+    if high_volume['cur_volume'] > avg_volume * 4 :
+        return True, high_volume, avg_volume
+    return False, high_volume, avg_volume
 
 # 2일간 거래량이 줄고 있는지 체크
-def check_volume_down(arr, start_index) : 
+def check_volume_down(arr, start_index, avg_volume) : 
     today_vol = arr[start_index]['cur_volume']
     one_before_day_vol = arr[start_index+1]['cur_volume']
     two_before_day_vol = arr[start_index+2]['cur_volume']
+
+    is_continue_down = False
+    is_avg_volume_than_down = False
+
     if today_vol < one_before_day_vol and one_before_day_vol < two_before_day_vol :
-        return True
-    return False
+        is_continue_down = True
+
+    if  avg_volume != None and today_vol < avg_volume and one_before_day_vol < avg_volume and two_before_day_vol < avg_volume :
+        is_avg_volume_than_down = True
+        
+    
+    return is_continue_down, is_avg_volume_than_down
 
 class MyWindow(QMainWindow):
     def __init__(self):
@@ -157,8 +167,14 @@ class MyWindow(QMainWindow):
                 continue
             if self.day_chart_query_idx < start_idx  :
                 continue
-            if '(H)' in name or 'TIGER ' in name or 'KODEX ' in name or 'ARIRANG ' in name or 'KINDEX ' in name  or 'KBSTAR ' in name or 'KOSEF ' in name or ' ETN' in name :
-                print("day_chart_query fail name ("+ str(self.day_chart_query_idx) + "/" + str(stockInfo_list_size) + ")" + name)
+
+            ignore_check = False
+            for check_name in ['(H)', 'TIGER ', 'KODEX ', 'ARIRANG ', 'KINDEX ', 'KBSTAR ', 'KOSEF ', ' ETN', 'HANARO ', 'KOSDAQ ', 'ARIRANG '] :
+                if  check_name in name : 
+                    print("day_chart_query fail name ("+ str(self.day_chart_query_idx) + "/" + str(stockInfo_list_size) + ")" + name)
+                    ignore_check = True
+                    break
+            if ignore_check :
                 continue
 
             self.kiwoom.dynamicCall('SetInputValue(QString, QString)', '종목코드', code)
@@ -309,18 +325,24 @@ class MyWindow(QMainWindow):
         cur_stockinfo = stock_data['stock_info'][stock_info_index]
         date = int(cur_stockinfo['date'])
         cur_price = int(cur_stockinfo['cur_price'])
+        cur_high_price = int(cur_stockinfo['high_price'])
+        cur_low_price = int(cur_stockinfo['low_price'])
         yesterday_price = int(stock_data['stock_info'][stock_info_index+1]['cur_price'])
+        yesterday_high_price = int(stock_data['stock_info'][stock_info_index+1]['high_price'])
+        yesterday_low_price = int(stock_data['stock_info'][stock_info_index+1]['low_price'])
+        before_2day_start_price = int(stock_data['stock_info'][stock_info_index+2]['start_price'])
         result_fail = (False, date)
         result_success = (True, date)
         
         # 거래량 체크
-        ishighvolume, high_volume_stock_info = find_highvolume(stock_data['stock_info'], stock_info_index, 30)
+        ishighvolume, high_volume_stock_info, avg_volume = find_highvolume(stock_data['stock_info'], stock_info_index, 15)
         if False == ishighvolume:
             return result_fail, 0
 
-        isdownvolume = check_volume_down(stock_data['stock_info'], stock_info_index)
-        if False == isdownvolume:
-            return result_fail, 0
+        is_continue_down, is_avg_volume_than_down = check_volume_down(stock_data['stock_info'], stock_info_index, avg_volume)
+    
+        if False == is_avg_volume_than_down and False == is_continue_down :
+             return result_fail, 0
 
         ma_line_10 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 10)
         ma_line_20 =  make_movin_average_line(stock_data['cur_prices'], stock_info_index, 20)
@@ -331,8 +353,8 @@ class MyWindow(QMainWindow):
             return result_fail, 0
 
         # 120일 선 체크
-        if (cur_price * 1.02 > ma_line_120 and ma_line_120 > cur_price * 0.995) and ( yesterday_price > ma_line_120) :
-            return result_success, 120
+        # if (cur_price * 1.02 > ma_line_120 and ma_line_120 > cur_price * 0.995) and ( yesterday_price > ma_line_120) :
+        #     return result_success, 120
 
         # 60일 선 체크
         # if (cur_price * 1.02 > ma_line_60 and ma_line_60 > cur_price * 0.995) and ( yesterday_price > ma_line_60) :
@@ -344,9 +366,16 @@ class MyWindow(QMainWindow):
         # 20일 선 체크
         diff_10_20 = ma_line_10 - ma_line_20
         diff_20_60 = ma_line_20 - ma_line_60
-        if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) and (high_v_rate_rise > 9)  :
-            if ( ma_line_10 > ma_line_20 * 1.025 ) and ( diff_10_20 > diff_20_60 / 2 ):
+        # if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) and (high_v_rate_rise > 10)  :
+        #     if ( ma_line_10 > ma_line_20 * 1.02 ) and ( diff_10_20 > diff_20_60 / 3.5 ):
+        if (cur_price < ma_line_10 and cur_price > ma_line_20) and ( yesterday_price > ma_line_20) and (high_v_rate_rise > 10)  :
+            if ( ma_line_10 > ma_line_20 * 1.01 ) and ( diff_10_20 > diff_20_60 / 4 ):
                 return result_success, 20
+
+        if (cur_price > ma_line_10 and yesterday_price > ma_line_10) and ( True == is_continue_down) and before_2day_start_price > cur_low_price and (cur_price < ma_line_10 * 1.04) :
+            if ( cur_high_price > yesterday_high_price * 0.992) and ( cur_high_price < yesterday_high_price * 1.008) and (ma_line_10 > ma_line_20) :
+                if ( cur_low_price > yesterday_low_price * 0.992) and ( cur_low_price < yesterday_low_price * 1.008) :
+                    return result_success, 10
 
         return result_fail, 0
 
