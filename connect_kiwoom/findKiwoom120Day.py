@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 import csv
 from time import sleep
 
+from datetime import datetime
 import json
 from PyQt5.QAxContainer import *
 from PyQt5.QtGui import *
@@ -93,15 +94,24 @@ class MyWindow(QMainWindow):
         self.setGeometry(200, 200, 1200, 800)
 
         # 키움 OpenAPI 라이브러리 추가 
-        self.kiwoom = QAxWidget('KHOPENAPI.KHOpenAPICtrl.1')
+        self.kiwoom = QAxWidget('KHOPENAPI.KHOpenAPICtrl.1') 
 
         self.text_edit = QTextEdit(self)
         self.text_edit.setGeometry(10, 260, 560, 200)
         self.text_edit.setEnabled(False)
 
+        label = QLabel('인덱스 : ', self)
+        label.setGeometry(10, 20, 40, 20)
         self.index_text_edit = QLineEdit(self)
-        self.index_text_edit.move(10, 20)
+        self.index_text_edit.move(70, 20)
         self.index_text_edit.setText('0')
+
+        label = QLabel('날짜 : ', self)
+        label.setGeometry(10, 70, 40, 20)
+        self.date_text_edit = QLineEdit(self)
+        self.date_text_edit.move(70, 70)
+        self.date_text_edit.setText(datetime.today().strftime("%Y%m%d"))
+\
 
         ######## [버튼] ########
 
@@ -112,7 +122,7 @@ class MyWindow(QMainWindow):
 
 
         self.listWidget = QListWidget(self)
-        self.listWidget.setGeometry(30, 60, 270, 150)
+        self.listWidget.setGeometry(200, 80, 470, 150)
 
         # sqlite conn
         self.conn = SqliteConn(os.getcwd() + '/DataBase/Plutus.sqlite3')
@@ -145,8 +155,10 @@ class MyWindow(QMainWindow):
         self.logic_120day_result = {}
 
         start_idx = int(self.index_text_edit.text())
+        date = self.date_text_edit.text()
 
-        self.day_chart_query('20210316', start_idx)
+
+        self.day_chart_query(date, start_idx)
             
     # opt10081 : 주식 일봉 차트 조회 요청 
     def day_chart_query(self, date, start_idx) :
@@ -271,16 +283,23 @@ class MyWindow(QMainWindow):
                 if stock_info_len > 350 : 
                     stock_info_len = 350
 
+                
+                folder_name = "result_" + self.date_text_edit.text()
+
+                if not os.path.exists(folder_name) :
+                    os.makedirs(folder_name)
+
                 for i in range(0, stock_info_len) :
                     result, day = self.check_day_logic(stock_data, i)
                     check_ok = result[0]
                     date = result[1]
                     file_name = "day_result_" + str(date) + "_" + str(day) + ".txt"
+                    
                     if check_ok :
                         self.logic_120day_result[code] = stock_data
                         msg = f"['{str(date)}']['{str(day)}'로직] : '{str(self.day_chart_query_idx)}' = '{self.getStockName(code)}'"
                         self.listWidget.addItem(msg)                        
-                        with open('result/' + file_name, "a") as f:
+                        with open(folder_name+ '/' + file_name, "a") as f:
                             f.writelines(msg + "\n")
 
         try:
