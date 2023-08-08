@@ -42,42 +42,45 @@ def update_data_and_process(code_list, code, update_data, bot):
     code_data = code_list[code]
     code_data["update_datas"].append(update_data)
 
-    if not code_data["is_buy"]:
+    if code_data["is_buy"] < 3:
         # 어제 고가 보다 가격이 높아 지면 체크
         if update_data["yesterday_high_price"] < update_data["current_price"]:
-            code_data["is_buy"] = True
+            code_data["is_buy"] += 1
             send_bot_message(bot, "매수 포착 : {0}".format(update_data["name"]))
-
-    elif not code_data["is_sell"]:
+    # 매수가 1회 이상되면서 sell이 3회 이하 일때
+    elif code_data["is_sell"] < 3 and 1 < code_data["is_buy"]:
         if update_data["current_price"] < update_data["ave60_price"]:
-            code_data["is_sell"] = True
+            code_data["is_sell"] += 1
             send_bot_message(bot, "매도 포착 : {0}".format(update_data["name"]))
 
 
 # 텔레그램 설정
-token = "6353419413:AAGvj-L4GCgJhtMTgDxRdppcOi_igWooQow"
+
+token = os.getenv("TELE_TOKEN")
+print(token)
 bot = telepot.Bot(token)
 
 logger = make_logger()
 
 cur_date = datetime.datetime.now().date()
-send_bot_message(bot, "{0}의 주식 자동 감시를 시작 합니다.".format(cur_date))
-logger.info(f'{cur_date}의 주식 자동 감시를 시작 합니다.')
 
 # 로그인 
 kiwoom = Kiwoom()
 kiwoom.CommConnect(block=True)
 
 codeList = {
-    "095340": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "028050": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "348210": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "000100": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "060370": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "326030": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "067900": {"update_datas": [], "is_buy": False, "is_sell": False},
-    "304100": {"update_datas": [], "is_buy": False, "is_sell": False},
+    "095340": None,
+    "028050": None,
+    "348210": None,
+    "000100": None,
+    "060370": None,
+    "326030": None,
+    "067900": None,
+    "304100": None
 }
+
+for i, code in enumerate(codeList.keys()):
+    codeList[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
 
 # 하루 총 390분
 # 11시 이후 전날 고점을 기준으로 합니다.
@@ -85,22 +88,25 @@ codeList = {
 delay_per_code = 3.0
 start_time = 90000
 
+send_bot_message(bot, "{0}의 주식 자동 감시를 시작 합니다.".format(cur_date))
+logger.info(f'{cur_date}의 주식 자동 감시를 시작 합니다.')
+
 run_count = 0
 while run_count < 100:
     now = datetime.datetime.now()
     remain_sleep = 59.5
 
-    logger.info(f'수행 시간 : {now}')
+    logger.info(f'현재 시간 : {now}')
+    logger.info(f'접속 상태 : {check_connect_state(kiwoom)}')
 
-    if now.hour not in [9, 10, 11]:
+    if now.hour not in [9, 10, 11, 12, 13, 14, 15]:
         logger.info(f'아직 수행 시간이 아닙니다.')
-        logger.info(f'접속 상태 : {check_connect_state(kiwoom)}')
         time.sleep(remain_sleep)
         continue
 
     # 1분 마다 해당 code들의 정보를 가져와서 동기화 합니다.
     for i, code in enumerate(codeList.keys()):
-        logger.info(f"{i}/{len(codeList)} {transfer_code_to_name(kiwoom, code)}")
+        logger.info(f"{i+1}/{len(codeList)} {transfer_code_to_name(kiwoom, code)}")
         df = kiwoom.block_request("opt10080",
                                   종목코드=code,
                                   틱범위="1",
