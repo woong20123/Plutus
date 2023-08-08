@@ -8,3 +8,4 @@ plog.log
 .idea/
 *.exe
 *.log
+strategy/data/target.csv

@@ -37,6 +37,13 @@ def check_connect_state(kiwoom):
     connect_state = ["미연결", "연결"]
     return connect_state[kiwoom.GetConnectState()]
 
+def update_data_to_msg(update_data):
+    return (f'이름 : {update_data["name"]}\n'
+            f'현재가 : {update_data["current_price"]}원\n'
+            f'10선 : {update_data["ave10_price"]}원\n'
+            f'20선 : {update_data["ave20_price"]}원\n'
+            f'60선 : {update_data["ave60_price"]}원\n')
+
 
 def update_data_and_process(code_list, code, update_data, bot):
     code_data = code_list[code]
@@ -46,18 +53,18 @@ def update_data_and_process(code_list, code, update_data, bot):
         # 어제 고가 보다 가격이 높아 지면 체크
         if update_data["yesterday_high_price"] < update_data["current_price"]:
             code_data["is_buy"] += 1
-            send_bot_message(bot, "매수 포착 : {0}".format(update_data["name"]))
+            send_bot_message(bot, f'매수 포착 { update_data_to_msg(update_data) }')
     # 매수가 1회 이상되면서 sell이 3회 이하 일때
     elif code_data["is_sell"] < 3 and 1 < code_data["is_buy"]:
         if update_data["current_price"] < update_data["ave60_price"]:
             code_data["is_sell"] += 1
-            send_bot_message(bot, "매도 포착 : {0}".format(update_data["name"]))
+            update_date_to_json = json.dumps(update_data)
+            send_bot_message(bot, f'매도 포착 { update_data_to_msg(update_data) }')
 
 
 # 텔레그램 설정
 
 token = os.getenv("TELE_TOKEN")
-print(token)
 bot = telepot.Bot(token)
 
 logger = make_logger()
@@ -81,6 +88,7 @@ codeList = {
 
 for i, code in enumerate(codeList.keys()):
     codeList[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
+    logger.info(json.dumps(codeList[code]))
 
 # 하루 총 390분
 # 11시 이후 전날 고점을 기준으로 합니다.
@@ -88,18 +96,18 @@ for i, code in enumerate(codeList.keys()):
 delay_per_code = 3.0
 start_time = 90000
 
-send_bot_message(bot, "{0}의 주식 자동 감시를 시작 합니다.".format(cur_date))
+send_bot_message(bot, f'{cur_date}의 주식 자동 감시를 시작 합니다.')
 logger.info(f'{cur_date}의 주식 자동 감시를 시작 합니다.')
 
 run_count = 0
-while run_count < 100:
+while run_count < 300:
     now = datetime.datetime.now()
     remain_sleep = 59.5
 
     logger.info(f'현재 시간 : {now}')
     logger.info(f'접속 상태 : {check_connect_state(kiwoom)}')
 
-    if now.hour not in [9, 10, 11, 12, 13, 14, 15]:
+    if now.hour not in [9, 10, 11, 12, 13, 14, 15, 23]:
         logger.info(f'아직 수행 시간이 아닙니다.')
         time.sleep(remain_sleep)
         continue
@@ -117,18 +125,22 @@ while run_count < 100:
         df2 = df2.abs()
         request_day = int(df2.iloc[0]["체결시간"] / 1000000)
         request_time = int(df2.iloc[0]["체결시간"] % 1000000)
-        current_price = df2.iloc[0]["현재가"]
+        current_price = int(df2.iloc[0]["현재가"])
+        ave5_price = int(df2["현재가"][:5].sum() / 5)
+        ave10_price = int(df2["현재가"][:10].sum() / 10)
         ave20_price = int(df2["현재가"][:20].sum() / 20)
         ave60_price = int(df2["현재가"][:60].sum() / 60)
 
         today_elapsed_min = int((request_time - start_time) / 10000) * 60 + int((request_time - start_time) / 100 % 100)
-        yesterday_high_price = df2["고가"][:270 + today_elapsed_min].max()
+        yesterday_high_price = int(df2["고가"][:270 + today_elapsed_min].max())
 
         update_data = {
             "name": transfer_code_to_name(kiwoom, code),
             "request_day": request_day,
             "request_time": request_time,
             "current_price": current_price,
+            "ave5_price": ave5_price,
+            "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
             "yesterday_high_price": yesterday_high_price,
@@ -143,8 +155,8 @@ while run_count < 100:
     if 0 < remain_sleep:
         time.sleep(remain_sleep)
 
-send_bot_message(bot, f'{datetime.datetime.now().date()}의 주식 자동 감시를 종료 합니다.')
-logger.info(f'{datetime.datetime.now().date()}의 주식 자동 감시를 종료 합니다.')
+send_bot_message(bot, f'{cur_date}의 주식 자동 감시를 종료 합니다.')
+logger.info(f'{cur_date}의 주식 자동 감시를 종료 합니다.')
 
 # 컴퓨터를 종료 합니다.
 os.system('shutdown -s -f')
