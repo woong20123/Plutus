@@ -54,11 +54,15 @@ def update_data_and_process(code_list, code, update_data, bot):
         if update_data["yesterday_high_price"] < update_data["current_price"]:
             code_data["is_buy"] += 1
             send_bot_message(bot, f'매수 포착 { update_data_to_msg(update_data) }')
-    # 매수가 1회 이상되면서 sell이 3회 이하 일때
-    elif code_data["is_sell"] < 3 and 1 < code_data["is_buy"]:
+    # 첫번째는 20일선이 깨지는지 먼저 체크 합니다.
+    elif code_data["is_sell"] < 2:
+        if update_data["current_price"] < update_data["ave20_price"]:
+            code_data["is_sell"] += 1
+            send_bot_message(bot, f'매도 포착 { update_data_to_msg(update_data) }')
+    # 두번째는 60일선이 깨지는지 먼저 체크 합니다.
+    elif code_data["is_sell"] < 3:
         if update_data["current_price"] < update_data["ave60_price"]:
             code_data["is_sell"] += 1
-            update_date_to_json = json.dumps(update_data)
             send_bot_message(bot, f'매도 포착 { update_data_to_msg(update_data) }')
 
 
@@ -76,19 +80,15 @@ kiwoom = Kiwoom()
 kiwoom.CommConnect(block=True)
 
 codeList = {
-    "095340": None,
+    "304100": None,
     "028050": None,
-    "348210": None,
-    "000100": None,
     "060370": None,
-    "326030": None,
     "067900": None,
-    "304100": None
+    "326030": None,
+    "049520": None,
+    "110990": None,
+    "950140": None,
 }
-
-for i, code in enumerate(codeList.keys()):
-    codeList[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
-    logger.info(json.dumps(codeList[code]))
 
 # 하루 총 390분
 # 11시 이후 전날 고점을 기준으로 합니다.
@@ -98,6 +98,11 @@ start_time = 90000
 
 send_bot_message(bot, f'{cur_date}의 주식 자동 감시를 시작 합니다.')
 logger.info(f'{cur_date}의 주식 자동 감시를 시작 합니다.')
+
+logger.info(f'[감시 목록]')
+for i, code in enumerate(codeList.keys()):
+    codeList[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
+    logger.info(f' - {transfer_code_to_name(kiwoom, code)}')
 
 run_count = 0
 while run_count < 300:
