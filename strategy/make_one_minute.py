@@ -89,6 +89,7 @@ if __name__ == "__main__":
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
     make_date = 230809
+    collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
 
@@ -121,10 +122,10 @@ if __name__ == "__main__":
         ave60_price = int(df2["현재가"][:60].sum() / 60)
 
         stock_data = {
-            "code" : code,
+            "code": code,
             "name": transfer_code_to_name(kiwoom, code),
             "date": make_date,
-            "last_update" : 900,
+            "last_update" : start_time,
             "prices": [],
             "yesterday_prices": yesterday_prices,
             "cur_price": cur_price,
@@ -133,11 +134,13 @@ if __name__ == "__main__":
             "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
+            "buy_check": 0,
+            "sell_check": 0,
         }
 
         # 데이터를 mongoDB에 저장합니다.
         key = {"code": code, "date" : make_date}
-        my_mongo.upsert_to_database(stock_db, 'real_lion', key, stock_data)
+        my_mongo.upsert_to_database(stock_db, collection_name, key, stock_data)
         logger.info(f"mongo db에 데이터 저장  key : {key}, data : {json.dumps(stock_data)}")
 
     logger.info(f'{make_date}의 주식 데이터를 생성을 완료 하였습니다.')
