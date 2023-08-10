@@ -8,7 +8,7 @@ import sys
 import logging
 import my_telegram as telegram
 import my_mongo
-
+import numpy
 
 
 # code를 종목명으로 변환합니다.
@@ -106,6 +106,7 @@ if __name__ == "__main__":
         ave10_price = int(df2["현재가"][:10].sum() / 10)
         ave20_price = int(df2["현재가"][:20].sum() / 20)
         ave60_price = int(df2["현재가"][:60].sum() / 60)
+        past_ave_volume = int(numpy.mean(df2["거래량"]))
 
         stock_data = {
             "code": code,
@@ -113,13 +114,18 @@ if __name__ == "__main__":
             "date": make_date,
             "last_update" : start_time,
             "prices": [],
-            "yesterday_prices": yesterday_prices,
             "cur_price": cur_price,
+            "yesterday_high_price": high_price,
             "high_price": high_price,
+            "volumes" : [],
+            "tick_volume" : 0,
+            "total_volume": 0,
+            "last_total_volume" : 0,
             "ave5_price": ave5_price,
             "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
+            "past_ave_volume": past_ave_volume,
             "buy_check": 0,
             "sell_check": 0,
         }

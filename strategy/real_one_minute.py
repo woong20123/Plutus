@@ -8,6 +8,7 @@ from datetime import datetime
 import py_trade_util
 import my_mongo
 import json
+import numpy
 
 
 def make_logger():
@@ -42,6 +43,20 @@ def one_minute_data_to_msg(one_minute_data):
             f'10선 : {one_minute_data["ave10_price"]}원\n'
             f'20선 : {one_minute_data["ave20_price"]}원\n'
             f'60선 : {one_minute_data["ave60_price"]}원\n')
+
+
+def get_score_serialize_price(prices, search_count) :
+    find_count = search_count + 1 if search_count + 1 <= len(prices) else len(prices)
+    last_price = 0
+    score = 0
+    for i, price in enumerate(prices[-find_count:]):
+        if 0 < i:
+            if last_price < price:
+                score += 1
+            elif last_price > price:
+                score -= 1
+        last_price = price
+    return score
 
 
 class MyWindow(QMainWindow):
@@ -93,7 +108,13 @@ class MyWindow(QMainWindow):
         code = real_data["code"]
         one_minute = self.one_minutes[code]
         one_minute["cur_price"] = real_data["cur_price"]
+        one_minute["start_price"] = real_data["start_price"]
         one_minute["last_update"] = real_data["time"]
+
+        one_minute["total_volume"] = real_data["total_volume"]
+
+        if 0 == one_minute["last_total_volume"]:
+            one_minute["last_total_volume"] = real_data["total_volume"]
 
     def make_average(self, range, today_prices, yesterday_prices):
         ave_prices = []
@@ -132,6 +153,18 @@ class MyWindow(QMainWindow):
             while len(one_minute['prices']) < diff_minute:
                 one_minute['prices'].append(one_minute["cur_price"])
 
+            # 거래량 구하는 두번째 방법
+            one_minute["tick_volume"] = one_minute["total_volume"] - one_minute["last_total_volume"]
+            one_minute["last_total_volume"] = one_minute["total_volume"]
+
+            one_minute['volumes'].append(one_minute["tick_volume"])
+            while len(one_minute['volumes']) < diff_minute:
+                one_minute['volumes'].append(one_minute["tick_volume"])
+
+
+            # tick 데이터 초기화
+            one_minute["tick_volume"] = 0
+
             one_minute['ave5_price'] = self.make_average(5, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave10_price'] = self.make_average(10, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave20_price'] = self.make_average(20, one_minute['prices'], one_minute['yesterday_prices'])
@@ -151,28 +184,49 @@ class MyWindow(QMainWindow):
             one_minute_log.pop("_id")
             one_minute_log.pop("yesterday_prices")
             one_minute_log.pop("prices")
+            one_minute_log.pop("volumes")
+            one_minute_log.pop("tick_volume")
             my_mongo.upsert_to_database(self.stock_db, self.log_collection_name, log_key, one_minute_log)
 
-            # 로직 체크
+            if one_minute["past_ave_volume"] == 0:
+                one_minute["past_ave_volume"] = numpy.mean(one_minute['volumes'])
+
+
+            last_volume = one_minute['volumes'][-1]
+            ave_volume = numpy.mean(one_minute['volumes']) + one_minute["past_ave_volume"]
+
             if one_minute["buy_check"] < 3:
-                # 어제 고가 보다 가격이 높아 지면 체크
-                if one_minute["high_price"] < one_minute["cur_price"]:
+                # 전략 1
+                # 로직 체크
+                # 어제 고점 돌파
+                # 의미 있는 거래량 증가
+                # 시가 보다 높음
+                if (one_minute["yesterday_high_price"] < one_minute["cur_price"] and (ave_volume * 2) < last_volume
+                        and one_minute['ave20_price'] < one_minute["cur_price"] and  one_minute['start_price'] < one_minute["cur_price"]):
                     one_minute["high_price"] = one_minute["cur_price"]
                     one_minute["buy_check"] += 1
                     telegram.send_bot_message(self.bot,
-                                              f'매수 포착 buy_check:{one_minute["buy_check"]}, {one_minute_data_to_msg(one_minute)}')
-            # 첫번째는 20일선이 깨지는지 먼저 체크 합니다.
-            elif one_minute["sell_check"] < 2:
-                if one_minute["cur_price"] < one_minute["ave20_price"]:
+                                              f'[매수 포착][어제 고점 - 거래량 - 시가] buy_check:{one_minute["buy_check"]}, {one_minute_data_to_msg(one_minute)}')
+            elif one_minute["sell_check"] < 1:
+                # 전략 1 최근 15분봉의 상승 추세 확인
+                serialize_price_score_long = get_score_serialize_price(one_minute['prices'], 15)
+                serialize_price_score_short = get_score_serialize_price(one_minute['prices'], 7)
+                if serialize_price_score_short < 0 or serialize_price_score_short < serialize_price_score_long:
                     one_minute["sell_check"] += 1
                     telegram.send_bot_message(self.bot,
-                                              f'매도 포착 sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
+                                              f'[매도 포착][15분봉의 하락 추세] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
+
+                # 전략 2 20일선이 깨지는지 먼저 체크 합니다.
+                if one_minute["cur_price"] < one_minute["ave20_price"] and int(ave_volume / 2) < last_volume:
+                    one_minute["sell_check"] += 1
+                    telegram.send_bot_message(self.bot,
+                                              f'[매도 포착][20일선 추락] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
             # 두번째는 60일선이 깨지는지 먼저 체크 합니다.
             elif one_minute["sell_check"] < 3:
                 if one_minute["cur_price"] < one_minute["ave60_price"]:
                     one_minute["sell_check"] += 1
                     telegram.send_bot_message(self.bot,
-                                              f'매도 포착 sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
+                                              f'[매도 포착][60일선 추락] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
 
     def make_code_data(self):
         self.one_minutes = {}
@@ -188,6 +242,17 @@ class MyWindow(QMainWindow):
             # mongo에서 데이터 가져오기
             self.one_minutes[code] = my_mongo.find_one_to_database(self.stock_db, self.collection_name,
                                                                    {"code": code, "date": self.traking_date})
+
+            # 데이터 보정
+            if None == self.one_minutes[code].get("yesterday_high_price"):
+                self.one_minutes[code]["yesterday_high_price"] = self.one_minutes[code]["high_price"]
+
+            if None == self.one_minutes[code].get("volumes"):
+                self.one_minutes[code]['volumes'] = []
+
+            for key in ["tick_volume", "total_volume", "last_total_volume", "past_ave_volume", "start_price"]:
+                self.one_minutes[code][key] = 0
+
             if len(self.one_minutes[code]["prices"]) == 0:
                 self.one_minutes[code]["prices"].append(self.one_minutes[code]["cur_price"])
             self.logger.info(f' - {self.one_minutes[code]["name"]} ')
@@ -200,12 +265,15 @@ class MyWindow(QMainWindow):
                 "cur_price": abs(int(self.GetCommRealData(code, 10))),  # 현재가
                 "sell_quote": abs(int(self.GetCommRealData(code, 27))),  # 매도호가
                 "buy_quote": abs(int(self.GetCommRealData(code, 28))),  # 매수호가
-                "volume": abs(int(self.GetCommRealData(code, 13))),  # 누적 거래량
+                "volume": abs(int(self.GetCommRealData(code, 15))),  # 거래량
+                "total_volume": abs(int(self.GetCommRealData(code, 13))),  # 누적 거래량
                 "start_price": abs(int(self.GetCommRealData(code, 16))),  # 시가
                 "high_price": abs(int(self.GetCommRealData(code, 17))),  # 고가
                 "low_price": abs(int(self.GetCommRealData(code, 18))),  # 저가
                 "volume_ratio": abs(int(self.GetCommRealData(code, 851))),  # 전일비 거래량 비율
             }
+
+            self.logger.info(f' log real_date : {json.dumps(real_data)}')
 
             self.data_update(real_data)
             self.per_one_minite_logic(int(real_data["time"]))
