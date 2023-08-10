@@ -9,6 +9,13 @@ import py_trade_util
 import my_mongo
 import json
 import numpy
+from enum import Enum
+
+
+class TradingStrategy(Enum):
+    FIRST = 0
+    SECOND = 1
+    THIRD = 2
 
 
 def make_logger():
@@ -62,6 +69,7 @@ def get_score_serialize_price(prices, search_count):
 class MyWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.update_time_per_minute = 90100
         self.setWindowTitle("real_one_minute")
         self.setGeometry(300, 300, 300, 400)
 
@@ -71,22 +79,15 @@ class MyWindow(QMainWindow):
         self.logger = make_logger()
         # mongoDB 생성
         self.stock_db = my_mongo.get_database("stock")
-        self.tracking_code_list = ["095340",
-                                   "028050",
-                                   "006730",
-                                   "018290",
-                                   "069460",
-                                   "071970",
-                                   "208370",
-                                   "257720",
-                                   "335890",
-                                   "014620",
-                                   "033100",
-                                   "066910",
-                                   "018290",
-                                   "056080"]
+        self.tracking_code_list = ["071970",
+                                    "041020",
+                                    "257720",
+                                    "175140",
+                                    "277810",
+                                    "309930",
+                                    "049520"]
 
-        self.traking_date = 230810
+        self.traking_date = 230811
         self.trade_start_time = 90000
         self.collection_name = 'one_minute'
         self.log_collection_name = 'one_minute_log'
@@ -136,16 +137,16 @@ class MyWindow(QMainWindow):
 
     def per_one_minite_logic(self, time):
         # 1분 간격으로 체크 하는 로직입니다.
-        if time <= self.update_time_per_minite:
+        if time <= self.update_time_per_minute:
             return
 
-        self.update_time_per_minite += 100
+        self.update_time_per_minute += 100
 
-        diff_time = int((self.update_time_per_minite - self.trade_start_time) / 100)
+        diff_time = int((self.update_time_per_minute - self.trade_start_time) / 100)
         diff_minute = int((diff_time / 100)) * 60 + diff_time % 100
 
         self.logger.info(
-            f'per_one_minite_logic, update_time_per_minite:{self.update_time_per_minite}, diff_minute :{diff_minute}')
+            f'per_one_minite_logic, update_time_per_minite:{self.update_time_per_minute}, diff_minute :{diff_minute}')
 
         # 이평선 계산 작업 수행
         for code, one_minute in self.one_minutes.items():
@@ -178,9 +179,9 @@ class MyWindow(QMainWindow):
             my_mongo.upsert_to_database(self.stock_db, self.collection_name, key, one_minute)
 
             # mongoDB log collect에 업데이트 수행
-            log_key = {"code": code, "date": self.traking_date, "time": self.update_time_per_minite}
+            log_key = {"code": code, "date": self.traking_date, "time": self.update_time_per_minute}
             one_minute_log = one_minute.copy()
-            one_minute_log["time"] = self.update_time_per_minite
+            one_minute_log["time"] = self.update_time_per_minute
             one_minute_log.pop("_id")
             one_minute_log.pop("yesterday_prices")
             one_minute_log.pop("prices")
@@ -200,43 +201,51 @@ class MyWindow(QMainWindow):
                 # 어제 고점 돌파
                 # 의미 있는 거래량 증가
                 # 시가 보다 높음
+                # 20선이 60선보다 커야 됨
                 if (one_minute["yesterday_high_price"] < one_minute["cur_price"] and (ave_volume * 2) < last_volume
                         and one_minute['ave20_price'] < one_minute["cur_price"]
+                        and one_minute['ave60_price'] < one_minute["ave20_price"]
                         and one_minute['start_price'] < one_minute["cur_price"]):
                     one_minute["high_price"] = one_minute["cur_price"]
                     one_minute["buy_check"] += 1
                     telegram.send_bot_message(self.bot,
                                               f'[매수 포착][어제 고점 - 거래량 - 시가] buy_check:{one_minute["buy_check"]}, {one_minute_data_to_msg(one_minute)}')
-            elif one_minute["sell_check"] < 1:
-                # 전략 1 최근 15분봉의 상승 추세 확인
-                serialize_price_score_long = get_score_serialize_price(one_minute['prices'], 15)
-                serialize_price_score_short = get_score_serialize_price(one_minute['prices'], 7)
-                if serialize_price_score_short < 0 or serialize_price_score_short < serialize_price_score_long:
-                    one_minute["sell_check"] += 1
-                    telegram.send_bot_message(self.bot,
-                                              f'[매도 포착][15분봉의 하락 추세] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
 
-                # 전략 2 20일선이 깨지는지 먼저 체크 합니다.
-                if one_minute["cur_price"] < one_minute["ave20_price"] and int(ave_volume / 2) < last_volume:
-                    one_minute["sell_check"] += 1
-                    telegram.send_bot_message(self.bot,
-                                              f'[매도 포착][20일선 추락] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
-            # 두번째는 60일선이 깨지는지 먼저 체크 합니다.
-            elif one_minute["sell_check"] < 3:
-                if one_minute["cur_price"] < one_minute["ave60_price"]:
-                    one_minute["sell_check"] += 1
-                    telegram.send_bot_message(self.bot,
-                                              f'[매도 포착][60일선 추락] sell_check:{one_minute["sell_check"]}, {one_minute_data_to_msg(one_minute)}')
+            # 1회라도 매수가 체크 되었으면 sell 로직을 체크 합니다.
+            if 1 < one_minute["buy_check"]:
+                # 전략 1 최근 15분봉의 상승 추세 확인
+                # long 점수가 0보다 작거나(or) short 점수가 long 점수보다 작을 때 추세가 꺽인 걸로 확인
+                if one_minute["sell_check"][TradingStrategy.FIRST.value] < 2:
+                    serialize_price_score_long = get_score_serialize_price(one_minute['prices'], 15)
+                    serialize_price_score_short = get_score_serialize_price(one_minute['prices'], 7)
+                    if serialize_price_score_short < 0 or serialize_price_score_short < serialize_price_score_long:
+                        one_minute["sell_check"][TradingStrategy.FIRST.value] += 1
+                        telegram.send_bot_message(self.bot,
+                                                  f'[매도 포착][15분봉의 하락 추세] sell_count:{one_minute["sell_check"][TradingStrategy.FIRST.value]}, {one_minute_data_to_msg(one_minute)}')
+
+                # 전략 2 20선이 깨지는지 체크 합니다.
+                if one_minute["sell_check"][TradingStrategy.SECOND.value] < 1:
+                    if one_minute["cur_price"] < one_minute["ave20_price"] and int(ave_volume / 2) < last_volume:
+                        one_minute["sell_check"][TradingStrategy.SECOND.value] += 1
+                        telegram.send_bot_message(self.bot,
+                                                  f'[매도 포착][20일선 추락] sell_count:{one_minute["sell_check"][TradingStrategy.SECOND.value]}, {one_minute_data_to_msg(one_minute)}')
+
+                # 전략 3 60선이 깨지는지 먼저 체크 합니다.
+                if one_minute["sell_check"][TradingStrategy.THIRD.value] < 1:
+                    if one_minute["cur_price"] < one_minute["ave60_price"]:
+                        one_minute["sell_check"][TradingStrategy.THIRD.value] += 1
+                        telegram.send_bot_message(self.bot,
+                                                  f'[매도 포착][60일선 추락] sell_check:{one_minute["sell_check"][TradingStrategy.THIRD.value]}, {one_minute_data_to_msg(one_minute)}')
 
     def make_code_data(self):
         self.one_minutes = {}
-        cur_time = make_now_hhmmss()
-        self.update_time_per_minite = cur_time - (cur_time % 100) + 100
-        if self.update_time_per_minite < 90100:
-            self.update_time_per_minite = 90100
 
-        self.logger.info(f'update_time_per_minite : {self.update_time_per_minite}')
+        if py_trade_util.isTradingTime():
+            cur_time = make_now_hhmmss()
+            self.update_time_per_minute = cur_time - (cur_time % 100) + 100
 
+        self.logger.info(f'update_time_per_minite : {self.update_time_per_minute}')
+        self.logger.info(f'{self.traking_date}의 작업을 시작. version:{py_trade_util.version()} ')
         self.logger.info(f'[감시 목록]')
         for code in self.tracking_code_list:
             # mongo에서 데이터 가져오기

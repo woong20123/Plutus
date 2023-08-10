@@ -1,5 +1,7 @@
 import datetime
 
+def version():
+    return "20230810.01"
 
 def isTradingTime() -> bool:
     cur_now = datetime.datetime.now()

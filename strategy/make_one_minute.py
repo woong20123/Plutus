@@ -9,6 +9,7 @@ import logging
 import my_telegram as telegram
 import my_mongo
 import numpy
+import py_trade_util
 
 
 # code를 종목명으로 변환합니다.
@@ -43,7 +44,6 @@ def update_data_to_msg(update_data):
             f'60선 : {update_data["ave60_price"]}원\n')
 
 
-
 if __name__ == "__main__":
     # 텔레그램 설정
     bot = telegram.getBot()
@@ -55,30 +55,24 @@ if __name__ == "__main__":
     kiwoom.CommConnect(block=True)
 
     codeList = {
-        "095340": None,
-        "028050": None,
-        "006730": None,
-        "018290": None,
-        "069460": None,
         "071970": None,
-        "208370": None,
+        "041020": None,
         "257720": None,
-        "335890": None,
-        "014620": None,
-        "033100": None,
-        "066910": None,
-        "018290": None,
-        "056080": None,
+        "175140": None,
+        "277810": None,
+        "309930": None,
+        "049520": None,
     }
 
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = 230810
+    make_date = 230811
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
 
+    logger.info(f'{make_date}의 작업을 시작. version:{py_trade_util.version()} ')
     logger.info(f'{make_date}의 주식 데이터를 생성합니다')
 
     logger.info(f'[감시 목록]')
@@ -100,39 +94,40 @@ if __name__ == "__main__":
         request_time = int(df2.iloc[0]["체결시간"] % 1000000)
         cur_price = int(df2["현재가"][0])
         yesterday_prices = df2["현재가"][:60].tolist()
-        today_elapsed_min = int((request_time - start_time) / 10000) * 60 + int((request_time - start_time) / 100 % 100) - 90
+        today_elapsed_min = int((request_time - start_time) / 10000) * 60 + int(
+            (request_time - start_time) / 100 % 100) - 90
         high_price = int(df2["고가"][:today_elapsed_min].max())
         ave5_price = int(df2["현재가"][:5].sum() / 5)
         ave10_price = int(df2["현재가"][:10].sum() / 10)
         ave20_price = int(df2["현재가"][:20].sum() / 20)
         ave60_price = int(df2["현재가"][:60].sum() / 60)
-        past_ave_volume = int(numpy.mean(df2["거래량"]))
+        past_ave_volume = int(numpy.mean(df2["거래량"][:390]))
 
         stock_data = {
             "code": code,
             "name": transfer_code_to_name(kiwoom, code),
             "date": make_date,
-            "last_update" : start_time,
+            "last_update": start_time,
             "prices": [],
             "cur_price": cur_price,
-            "start_price" : 0,
+            "start_price": 0,
             "yesterday_high_price": high_price,
             "high_price": high_price,
-            "volumes" : [],
-            "tick_volume" : 0,
+            "volumes": [],
+            "tick_volume": 0,
             "total_volume": 0,
-            "last_total_volume" : 0,
+            "last_total_volume": 0,
             "ave5_price": ave5_price,
             "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
             "past_ave_volume": past_ave_volume,
             "buy_check": 0,
-            "sell_check": 0,
+            "sell_check": [0, 0, 0, 0],
         }
 
         # 데이터를 mongoDB에 저장합니다.
-        key = {"code": code, "date" : make_date}
+        key = {"code": code, "date": make_date}
         my_mongo.upsert_to_database(stock_db, collection_name, key, stock_data)
         logger.info(f"mongo db에 데이터 저장  key : {key}, data : {json.dumps(stock_data)}")
 
