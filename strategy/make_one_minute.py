@@ -17,7 +17,7 @@ def transfer_code_to_name(kiwoom, code):
 
 
 def make_logger():
-    log_instance = logging.getLogger(name='make_lion')
+    log_instance = logging.getLogger(name='make_one_minute')
     log_instance.setLevel(logging.INFO)
     formatter = logging.Formatter('|%(asctime)s||%(name)s||%(levelname)s|%(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S'
@@ -43,26 +43,6 @@ def update_data_to_msg(update_data):
             f'60선 : {update_data["ave60_price"]}원\n')
 
 
-def update_data_and_process(code_list, code, update_data, bot):
-    code_data = code_list[code]
-    code_data["update_datas"].append(update_data)
-
-    if code_data["is_buy"] < 3:
-        # 어제 고가 보다 가격이 높아 지면 체크
-        if update_data["yesterday_high_price"] < update_data["current_price"]:
-            code_data["is_buy"] += 1
-            telegram.send_bot_message(bot, f'매수 포착 {update_data_to_msg(update_data)}')
-    # 첫번째는 20일선이 깨지는지 먼저 체크 합니다.
-    elif code_data["is_sell"] < 2:
-        if update_data["current_price"] < update_data["ave20_price"]:
-            code_data["is_sell"] += 1
-            telegram.send_bot_message(bot, f'매도 포착 {update_data_to_msg(update_data)}')
-    # 두번째는 60일선이 깨지는지 먼저 체크 합니다.
-    elif code_data["is_sell"] < 3:
-        if update_data["current_price"] < update_data["ave60_price"]:
-            code_data["is_sell"] += 1
-            telegram.send_bot_message(bot, f'매도 포착 {update_data_to_msg(update_data)}')
-
 
 if __name__ == "__main__":
     # 텔레그램 설정
@@ -75,20 +55,26 @@ if __name__ == "__main__":
     kiwoom.CommConnect(block=True)
 
     codeList = {
-        "304100": None,
+        "095340": None,
         "028050": None,
-        "060370": None,
-        "067900": None,
-        "326030": None,
-        "049520": None,
-        "110990": None,
-        "950140": None,
+        "006730": None,
+        "018290": None,
+        "069460": None,
+        "071970": None,
+        "208370": None,
+        "257720": None,
+        "335890": None,
+        "014620": None,
+        "033100": None,
+        "066910": None,
+        "018290": None,
+        "056080": None,
     }
 
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = 230809
+    make_date = 230810
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
