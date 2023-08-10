@@ -115,6 +115,7 @@ if __name__ == "__main__":
             "last_update" : start_time,
             "prices": [],
             "cur_price": cur_price,
+            "start_price" : 0,
             "yesterday_high_price": high_price,
             "high_price": high_price,
             "volumes" : [],

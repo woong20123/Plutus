@@ -45,7 +45,7 @@ def one_minute_data_to_msg(one_minute_data):
             f'60선 : {one_minute_data["ave60_price"]}원\n')
 
 
-def get_score_serialize_price(prices, search_count) :
+def get_score_serialize_price(prices, search_count):
     find_count = search_count + 1 if search_count + 1 <= len(prices) else len(prices)
     last_price = 0
     score = 0
@@ -108,10 +108,11 @@ class MyWindow(QMainWindow):
         code = real_data["code"]
         one_minute = self.one_minutes[code]
         one_minute["cur_price"] = real_data["cur_price"]
-        one_minute["start_price"] = real_data["start_price"]
         one_minute["last_update"] = real_data["time"]
-
         one_minute["total_volume"] = real_data["total_volume"]
+
+        if 0 == one_minute["start_price"]:
+            one_minute["start_price"] = real_data["start_price"]
 
         if 0 == one_minute["last_total_volume"]:
             one_minute["last_total_volume"] = real_data["total_volume"]
@@ -161,7 +162,6 @@ class MyWindow(QMainWindow):
             while len(one_minute['volumes']) < diff_minute:
                 one_minute['volumes'].append(one_minute["tick_volume"])
 
-
             # tick 데이터 초기화
             one_minute["tick_volume"] = 0
 
@@ -191,7 +191,6 @@ class MyWindow(QMainWindow):
             if one_minute["past_ave_volume"] == 0:
                 one_minute["past_ave_volume"] = numpy.mean(one_minute['volumes'])
 
-
             last_volume = one_minute['volumes'][-1]
             ave_volume = numpy.mean(one_minute['volumes']) + one_minute["past_ave_volume"]
 
@@ -202,7 +201,8 @@ class MyWindow(QMainWindow):
                 # 의미 있는 거래량 증가
                 # 시가 보다 높음
                 if (one_minute["yesterday_high_price"] < one_minute["cur_price"] and (ave_volume * 2) < last_volume
-                        and one_minute['ave20_price'] < one_minute["cur_price"] and  one_minute['start_price'] < one_minute["cur_price"]):
+                        and one_minute['ave20_price'] < one_minute["cur_price"]
+                        and one_minute['start_price'] < one_minute["cur_price"]):
                     one_minute["high_price"] = one_minute["cur_price"]
                     one_minute["buy_check"] += 1
                     telegram.send_bot_message(self.bot,
