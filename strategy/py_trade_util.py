@@ -1,8 +1,25 @@
 import datetime
 
+from enum import Enum
+
 SECONDS_PER_MINUTE = 60
 MINUTES_PER_HOUR = 60
 HOURS_PER_DAY = 24
+
+
+class Common(Enum):
+    # 10시 30분
+    TRACKING_CODE_LIST = ["071970",
+                          "041020",
+                          "000100",
+                          "089850",
+                          "251970",
+                          "277810",
+                          "298040",
+                          "315640",
+                          "383310",
+                          "066910", ]
+    TRACKING_DATE = 230814
 
 
 def version():
@@ -11,7 +28,7 @@ def version():
 
 def isTradingTime() -> bool:
     cur_now = datetime.datetime.now()
-    if cur_now.hour not in [9, 10, 11, 12, 13, 14]:
+    if cur_now.hour in [9, 10, 11, 12, 13, 14]:
         return True
     elif cur_now.hour == 15 and cur_now.minute < 30:
         return True
@@ -33,7 +50,7 @@ def to_time(num_time):
 
 def num_time_to_str(num_time):
     num_time_to_time = to_time(num_time)
-    return '{0:02d}:{1:02d}:{2:02d}'.format(num_time_to_time["hour"], num_time_to_time["min"],num_time_to_time["sec"])
+    return '{0:02d}:{1:02d}:{2:02d}'.format(num_time_to_time["hour"], num_time_to_time["min"], num_time_to_time["sec"])
 
 
 def num_time_add(num_time, add):

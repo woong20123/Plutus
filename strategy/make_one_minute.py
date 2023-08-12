@@ -54,20 +54,14 @@ if __name__ == "__main__":
     kiwoom = Kiwoom()
     kiwoom.CommConnect(block=True)
 
-    codeList = {
-        "071970": None,
-        "041020": None,
-        "257720": None,
-        "175140": None,
-        "277810": None,
-        "309930": None,
-        "049520": None,
-    }
+    code_list = {}
+    for code in py_trade_util.Common.TRACKING_CODE_LIST.value:
+        code_list[code] = None
 
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = 230808
+    make_date = py_trade_util.Common.TRACKING_DATE.value
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
@@ -76,12 +70,12 @@ if __name__ == "__main__":
     logger.info(f'{make_date}의 주식 데이터를 생성합니다')
 
     logger.info(f'[감시 목록]')
-    for i, code in enumerate(codeList.keys()):
-        codeList[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
+    for i, code in enumerate(code_list.keys()):
+        code_list[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
         logger.info(f' - {transfer_code_to_name(kiwoom, code)}')
 
-    for i, code in enumerate(codeList.keys()):
-        logger.info(f"{i + 1}/{len(codeList)} {transfer_code_to_name(kiwoom, code)}")
+    for i, code in enumerate(code_list.keys()):
+        logger.info(f"{i + 1}/{len(code_list)} {transfer_code_to_name(kiwoom, code)}")
         df = kiwoom.block_request("opt10080",
                                   종목코드=code,
                                   틱범위="1",

@@ -5,6 +5,8 @@ from PyQt5.QAxContainer import *
 import datetime
 import my_telegram as telegram
 from datetime import datetime
+
+import py_trade_util
 import py_trade_util as ptutil
 import my_mongo
 import json
@@ -86,15 +88,8 @@ class MyWindow(QMainWindow):
         self.logger = make_logger()
         # mongoDB 생성
         self.stock_db = my_mongo.get_database("stock")
-        self.tracking_code_list = ["071970",
-                                   "041020",
-                                   "257720",
-                                   "175140",
-                                   "277810",
-                                   "309930",
-                                   "049520"]
-
-        self.traking_date = 230808
+        self.tracking_code_list = py_trade_util.Common.TRACKING_CODE_LIST.value
+        self.traking_date = py_trade_util.Common.TRACKING_DATE.value
         self.trade_start_time = 90000
         self.collection_name = 'one_minute'
         self.log_collection_name = 'one_minute_log'
@@ -327,8 +322,8 @@ class MyWindow(QMainWindow):
             cur_time = int(make_now_hhmmss())
             self.update_time_per_minute = cur_time - (cur_time % 100) + 100
 
+        self.logger.info(f'version: {ptutil.version()} traking_date: {self.traking_date} ')
         self.logger.info(f'update_time_per_minite : {self.update_time_per_minute}')
-        self.logger.info(f'{self.traking_date}의 작업을 시작. version:{ptutil.version()} ')
         self.logger.info(f'[감시 목록]')
         for code in self.tracking_code_list:
             # mongo에서 데이터 가져오기
@@ -424,7 +419,6 @@ class MyWindow(QMainWindow):
                 if time_hour == 13 or time_hour == 14:
                     random_value = 30
 
-
                 real_data["time"] = time
                 diff_price = int(real_data["cur_price"] * 0.001) * random.randrange(1, 3)
                 if random.randrange(1, 100) < random_value:
@@ -434,12 +428,11 @@ class MyWindow(QMainWindow):
                     real_data["cur_price"] -= diff_price
                     self.logger.info(f'test data sub')
 
-                self.logger.info(f'test data -> time:{real_data["time"]}, cur_price:{real_data["cur_price"]}, diff_price:{diff_price}, time_hour:{time_hour}')
+                self.logger.info(
+                    f'test data -> time:{real_data["time"]}, cur_price:{real_data["cur_price"]}, diff_price:{diff_price}, time_hour:{time_hour}')
                 self.data_update(real_data)
                 self.per_one_minute_logic(int(real_data["time"]))
                 t.sleep(0.1)
-
-
 
     def CommmConnect(self):
         self.ocx.dynamicCall("CommConnect()")
