@@ -1,4 +1,5 @@
 import json
+import py_trade_util as ptutil
 
 yesterday_prices = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,]
 today_prices = [1,1,1,2,2,4,5,6,5,4,4,5,6]
@@ -19,18 +20,21 @@ def get_score_serialize_price(prices, search_count) :
     return score
 
 
-print(f'get_score_serialize_price = {get_score_serialize_price(today_prices, 15)}')
+trade_start_time = 94300
+update_time_per_minute = 105000
 
-one_minute = {
-    "sell_check" : [0,0,0]
-}
+update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 300)
+ptutil.num_time_to_minute(update_time_per_minute)
+update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 6300)
+ptutil.num_time_to_minute(update_time_per_minute)
+update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 10500)
+ptutil.num_time_to_minute(update_time_per_minute)
 
-sell_checker = one_minute["sell_check"][0]
-one_minute["sell_check"][0] +=1
-sell_checker += 1
-sell_checker = one_minute["sell_check"][1]
-sell_checker += 1
-sell_checker = one_minute["sell_check"][2]
-sell_checker += 1
+update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 19900)
+ptutil.num_time_to_minute(update_time_per_minute)
+update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 200)
+ptutil.num_time_to_minute(update_time_per_minute)
+update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 3000)
+ptutil.num_time_to_minute(update_time_per_minute)
 
-print(json.dumps(one_minute))
+

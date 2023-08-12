@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = 230811
+    make_date = 230814
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
@@ -97,10 +97,11 @@ if __name__ == "__main__":
         today_elapsed_min = int((request_time - start_time) / 10000) * 60 + int(
             (request_time - start_time) / 100 % 100) - 90
         high_price = int(df2["고가"][:today_elapsed_min].max())
-        ave5_price = int(df2["현재가"][:5].sum() / 5)
-        ave10_price = int(df2["현재가"][:10].sum() / 10)
-        ave20_price = int(df2["현재가"][:20].sum() / 20)
-        ave60_price = int(df2["현재가"][:60].sum() / 60)
+        ave5_price = int(numpy.mean(df2["현재가"][:5]))
+        ave10_price = int(numpy.mean(df2["현재가"][:10]))
+        ave20_price = int(numpy.mean(df2["현재가"][:20]))
+        ave60_price = int(numpy.mean(df2["현재가"][:60]))
+        ave180_price = int(numpy.mean(df2["현재가"][:180]))
         past_ave_volume = int(numpy.mean(df2["거래량"][:390]))
 
         stock_data = {
@@ -111,6 +112,7 @@ if __name__ == "__main__":
             "prices": [],
             "cur_price": cur_price,
             "start_price": 0,
+            "yesterday_prices": yesterday_prices,
             "yesterday_high_price": high_price,
             "high_price": high_price,
             "volumes": [],
@@ -121,8 +123,9 @@ if __name__ == "__main__":
             "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
+            "ave180_price": ave180_price,
             "past_ave_volume": past_ave_volume,
-            "buy_check": 0,
+            "buy_check": [0, 0, 0, 0],
             "sell_check": [0, 0, 0, 0],
         }
 
@@ -130,5 +133,8 @@ if __name__ == "__main__":
         key = {"code": code, "date": make_date}
         my_mongo.upsert_to_database(stock_db, collection_name, key, stock_data)
         logger.info(f"mongo db에 데이터 저장  key : {key}, data : {json.dumps(stock_data)}")
+
+        # 0.3간 딜레이를 줍니다.
+        time.sleep(0.3)
 
     logger.info(f'{make_date}의 주식 데이터를 생성을 완료 하였습니다.')
