@@ -8,8 +8,15 @@ from datetime import datetime
 import py_trade_util as ptutil
 import my_mongo
 import json
+import random
 import numpy
 from enum import Enum
+import time as t
+
+
+class Static(Enum):
+    # 10시 30분
+    STRATEGY_3MINUTE_CHECK_START_TIME = 103000
 
 
 class Strategy(Enum):
@@ -49,10 +56,7 @@ def make_now_hhmmss():
 
 def one_minute_data_to_msg(one_minute_data):
     return (f'이름 : {one_minute_data["name"]}\n'
-            f'현재가 : {one_minute_data["cur_price"]}원\n'
-            f'10선 : {one_minute_data["ave10_price"]}원\n'
-            f'20선 : {one_minute_data["ave20_price"]}원\n'
-            f'60선 : {one_minute_data["ave60_price"]}원\n')
+            f'현재가 : {one_minute_data["cur_price"]}원\n')
 
 
 def get_score_serialize_price(prices, search_count):
@@ -90,7 +94,7 @@ class MyWindow(QMainWindow):
                                    "309930",
                                    "049520"]
 
-        self.traking_date = 230811
+        self.traking_date = 230808
         self.trade_start_time = 90000
         self.collection_name = 'one_minute'
         self.log_collection_name = 'one_minute_log'
@@ -114,10 +118,21 @@ class MyWindow(QMainWindow):
 
     def data_update(self, real_data):
         code = real_data["code"]
+        time = real_data["time"]
         one_minute = self.one_minutes[code]
         one_minute["cur_price"] = real_data["cur_price"]
         one_minute["last_update"] = real_data["time"]
         one_minute["total_volume"] = real_data["total_volume"]
+
+        # high_price 가격 갱신
+        if one_minute["high_price"] < real_data["cur_price"]:
+            one_minute["high_price"] = real_data["cur_price"]
+
+        # today_high_price 가격 갱신
+        # 10시 30분 이전에 고점만 갱신합니다 - 3minute 전략
+        if (one_minute["today_high_price"] < real_data["cur_price"] and
+                time <= Static.STRATEGY_3MINUTE_CHECK_START_TIME.value):
+            one_minute["today_high_price"] = real_data["cur_price"]
 
         if 0 == one_minute["start_price"]:
             one_minute["start_price"] = real_data["start_price"]
@@ -159,7 +174,6 @@ class MyWindow(QMainWindow):
                     and one_minute['ave20_price'] < one_minute["cur_price"]
                     and one_minute['ave60_price'] < one_minute["ave20_price"]
                     and one_minute['start_price'] < one_minute["cur_price"]):
-                one_minute["high_price"] = one_minute["cur_price"]
                 one_minute["buy_check"][Strategy.FIRST.value] += 1
                 telegram.send_bot_message(self.bot,
                                           f'[매수 포착][어제 고점 - 거래량 - 시가] buy_check:{one_minute["buy_check"][Strategy.FIRST.value]},'
@@ -191,20 +205,66 @@ class MyWindow(QMainWindow):
                     telegram.send_bot_message(self.bot,
                                               f'[매도 포착][60일선 추락] sell_check:{one_minute["sell_check"][Strategy.THIRD.value]}, {one_minute_data_to_msg(one_minute)}')
 
-    def strategy_3minute(self, one_minute):
+    def strategy_3minute(self, one_minute, time):
         self.logger.info(f'run strategy_3minute')
 
-    def per_one_minite_logic(self, time):
+        strategy_3minute = one_minute["strategy_3minute"]
+
+        if time < Static.STRATEGY_3MINUTE_CHECK_START_TIME.value:
+            self.logger.info(f'run strategy_3minute not time yet. time: {time}')
+            return
+
+        for key in ["buy_check", "buy_send", "sell_check", "sell_send"]:
+            if strategy_3minute.get(key) is None:
+                strategy_3minute[key] = 0
+
+        if 0 == strategy_3minute["buy_send"]:
+            # [매수 로직 체크]
+            # 당일 고점과 현재 가격을 비교 합니다.
+            if (one_minute["today_high_price"] < one_minute["cur_price"] and
+                    one_minute["ave180_price"] < one_minute["cur_price"]):
+                strategy_3minute["buy_check"] += 1
+            else:
+                strategy_3minute["buy_check"] = 0
+
+        if 1 == strategy_3minute["buy_send"] and 0 == strategy_3minute["sell_send"]:
+            # [매도 로직 체크]
+            # 180선 평균 -> 3분봉 60선 보다 현재가가 작아지면 체크합니다.
+            if one_minute["cur_price"] <= one_minute["ave180_price"]:
+                strategy_3minute["sell_check"] = 1
+
+        # buy_check가 2번이상 연속으로 체크되면 메시지를 보냅니다.
+        if 2 <= strategy_3minute["buy_check"]:
+            strategy_3minute["buy_check"] = 0
+            strategy_3minute["buy_send"] = 1
+            telegram.send_bot_message(self.bot,
+                                      f'[매수][{ptutil.num_time_to_str(time)}][3minute]고점 돌파\n'
+                                      f'{one_minute_data_to_msg(one_minute)}'
+                                      f'당일 고점 : {one_minute["today_high_price"]}원\n'
+                                      f'60선:{one_minute["ave180_price"]}원\n'
+                                      f'2% 가격 : {int(one_minute["cur_price"] * 0.02)}원')
+
+        # sell_check가 발견되면 메시지를 보냅니다.
+        if 1 == strategy_3minute["sell_check"]:
+            strategy_3minute["sell_check"] = 0
+            strategy_3minute["sell_send"] = 1
+            telegram.send_bot_message(self.bot,
+                                      f'[매도][{ptutil.num_time_to_str(time)}][3minute]60선 추락\n'
+                                      f'{one_minute_data_to_msg(one_minute)}'
+                                      f'60선:{one_minute["ave180_price"]}원\n')
+
+    def per_one_minute_logic(self, time):
         # 1분 간격으로 체크 하는 로직입니다.
         if time <= self.update_time_per_minute:
             return
 
-        self.update_time_per_minute = ptutil.num_time_add(self.update_time_per_minute, 100)
+        while self.update_time_per_minute < time:
+            self.update_time_per_minute = ptutil.num_time_add(self.update_time_per_minute, 100)
 
         diff_minute = ptutil.num_time_to_minute(ptutil.num_time_sub(self.update_time_per_minute, self.trade_start_time))
 
         self.logger.info(
-            f'per_one_minite_logic, update_time_per_minite:{self.update_time_per_minute}, diff_minute :{diff_minute}')
+            f'per_one_minute_logic, update_time_per_minute:{self.update_time_per_minute}, diff_minute :{diff_minute}')
 
         # 이평선 계산 작업 수행
         for code, one_minute in self.one_minutes.items():
@@ -228,9 +288,22 @@ class MyWindow(QMainWindow):
             one_minute['ave10_price'] = self.make_average(10, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave20_price'] = self.make_average(20, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave60_price'] = self.make_average(60, one_minute['prices'], one_minute['yesterday_prices'])
+            one_minute['ave180_price'] = self.make_average(180, one_minute['prices'], one_minute['yesterday_prices'])
 
             self.logger.info(
-                f'make ave, name:{one_minute["name"]}, ave5 :{one_minute["ave5_price"]}, ave10 :{one_minute["ave10_price"]}, ave20 :{one_minute["ave20_price"]}, ave60 :{one_minute["ave60_price"]}')
+                f'make ave, name:{one_minute["name"]}, ave5:{one_minute["ave5_price"]}, '
+                f'ave10:{one_minute["ave10_price"]}, ave20:{one_minute["ave20_price"]}, '
+                f'ave60:{one_minute["ave60_price"]}, ave180_price:{one_minute["ave180_price"]}')
+
+            if one_minute["past_ave_volume"] == 0:
+                one_minute["past_ave_volume"] = int(numpy.mean(one_minute['volumes']))
+
+            # 3분 전략 수행
+            if diff_minute % 3 == 1:
+                self.strategy_3minute(one_minute, time)
+
+            # default 전략 수행 - 일단 보류, 로직 참고용
+            # self.strategy_default(one_minute)
 
             # mongoDB 업데이트 수행
             key = {"code": code, "date": self.traking_date}
@@ -247,15 +320,6 @@ class MyWindow(QMainWindow):
             one_minute_log.pop("tick_volume")
             my_mongo.upsert_to_database(self.stock_db, self.log_collection_name, log_key, one_minute_log)
 
-            if one_minute["past_ave_volume"] == 0:
-                one_minute["past_ave_volume"] = int(numpy.mean(one_minute['volumes']))
-
-            # 3분 전략 수행
-            self.strategy_3minute(one_minute)
-
-            # default 전략 수행 - 일단 보류, 로직 참고용
-            #self.strategy_default(one_minute)
-
     def make_code_data(self):
         self.one_minutes = {}
 
@@ -271,17 +335,23 @@ class MyWindow(QMainWindow):
             self.one_minutes[code] = my_mongo.find_one_to_database(self.stock_db, self.collection_name,
                                                                    {"code": code, "date": self.traking_date})
 
-            if None == self.one_minutes[code].get("yesterday_prices"):
+            if self.one_minutes[code].get("yesterday_prices") is None:
                 self.one_minutes[code]["yesterday_prices"] = [self.one_minutes[code]["cur_price"]]
             # 데이터 보정
-            if None == self.one_minutes[code].get("yesterday_high_price"):
+            if self.one_minutes[code].get("yesterday_high_price") is None:
                 self.one_minutes[code]["yesterday_high_price"] = self.one_minutes[code]["high_price"]
 
-            if None == self.one_minutes[code].get("volumes"):
+            if self.one_minutes[code].get("volumes") is None:
                 self.one_minutes[code]['volumes'] = []
 
-            for key in ["tick_volume", "total_volume", "last_total_volume", "past_ave_volume", "start_price"]:
-                self.one_minutes[code][key] = 0
+            for key in ["tick_volume", "total_volume", "last_total_volume", "past_ave_volume", "start_price",
+                        "today_high_price"]:
+                if self.one_minutes[code].get(key) is None:
+                    self.one_minutes[code][key] = 0
+
+            for key in ["strategy_3minute"]:
+                if self.one_minutes[code].get(key) is None:
+                    self.one_minutes[code][key] = {}
 
             if len(self.one_minutes[code]["prices"]) == 0:
                 self.one_minutes[code]["prices"].append(self.one_minutes[code]["cur_price"])
@@ -306,7 +376,7 @@ class MyWindow(QMainWindow):
             # self.logger.debug(f' log real_date : {json.dumps(real_data)}')
 
             self.data_update(real_data)
-            self.per_one_minite_logic(int(real_data["time"]))
+            self.per_one_minute_logic(int(real_data["time"]))
 
     def register_btn_clicked(self):
         code_list_str = make_code_list_str(self.tracking_code_list)
@@ -321,9 +391,55 @@ class MyWindow(QMainWindow):
         self.logger.info(f'구독 해지 완료.')
 
     def bnt_test_clicked(self):
-        self.DisConnectRealData("1000")
-        telegram.send_bot_message(self.bot, f'one_minute 구독을 종료 합니다.')
-        self.logger.info(f'구독 해지 완료.')
+        is_test = False
+        self.logger.info(f'테스트 로직 is_test : {is_test}')
+
+        if is_test:
+            self.traking_date = 230808
+            self.update_time_per_minute = 90100
+            real_data = {
+                "code": "071970",
+                "time": 90001,  # 체결 시간
+                "cur_price": 12400,  # 현재가
+                "sell_quote": 0,  # 매도호가
+                "buy_quote": 0,  # 매수호가
+                "volume": 3790,  # 거래량
+                "total_volume": 37900,  # 누적 거래량
+                "start_price": 12500,  # 시가
+                "high_price": 12700,  # 고가
+                "low_price": 12400,  # 저가
+                "volume_ratio": 0,  # 전일비 거래량 비율
+            }
+
+            for time in range(90001, 150001, 100):
+
+                time_hour = int(time / 10000)
+                time_minute = int(time / 100) % 100
+                if time_minute > 60:
+                    continue
+
+                random_value = 50
+                if time_hour == 11 or time_hour == 12:
+                    random_value = 70
+                if time_hour == 13 or time_hour == 14:
+                    random_value = 30
+
+
+                real_data["time"] = time
+                diff_price = int(real_data["cur_price"] * 0.001) * random.randrange(1, 3)
+                if random.randrange(1, 100) < random_value:
+                    real_data["cur_price"] += diff_price
+                    self.logger.info(f'test data plus')
+                else:
+                    real_data["cur_price"] -= diff_price
+                    self.logger.info(f'test data sub')
+
+                self.logger.info(f'test data -> time:{real_data["time"]}, cur_price:{real_data["cur_price"]}, diff_price:{diff_price}, time_hour:{time_hour}')
+                self.data_update(real_data)
+                self.per_one_minute_logic(int(real_data["time"]))
+                t.sleep(0.1)
+
+
 
     def CommmConnect(self):
         self.ocx.dynamicCall("CommConnect()")

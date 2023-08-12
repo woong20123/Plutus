@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = 230814
+    make_date = 230808
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
@@ -93,7 +93,7 @@ if __name__ == "__main__":
         request_day = int(df2.iloc[0]["체결시간"] / 1000000)
         request_time = int(df2.iloc[0]["체결시간"] % 1000000)
         cur_price = int(df2["현재가"][0])
-        yesterday_prices = df2["현재가"][:60].tolist()
+        yesterday_prices = df2["현재가"][:240].tolist()
         today_elapsed_min = int((request_time - start_time) / 10000) * 60 + int(
             (request_time - start_time) / 100 % 100) - 90
         high_price = int(df2["고가"][:today_elapsed_min].max())

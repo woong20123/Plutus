@@ -4,8 +4,9 @@ SECONDS_PER_MINUTE = 60
 MINUTES_PER_HOUR = 60
 HOURS_PER_DAY = 24
 
+
 def version():
-    return "20230812.01"
+    return "20230812.02"
 
 
 def isTradingTime() -> bool:
@@ -30,6 +31,11 @@ def to_time(num_time):
     return {"hour": time_hour, "min": time_min, "sec": time_sec}
 
 
+def num_time_to_str(num_time):
+    num_time_to_time = to_time(num_time)
+    return '{0:02d}:{1:02d}:{2:02d}'.format(num_time_to_time["hour"], num_time_to_time["min"],num_time_to_time["sec"])
+
+
 def num_time_add(num_time, add):
     num_time_to_time = to_time(num_time)
     add_to_time = to_time(add)
@@ -47,7 +53,6 @@ def num_time_add(num_time, add):
         result_hours += 1
 
     result_time = result_hours * 10000 + result_minutes * 100 + result_seconds
-    print(f'time : {num_time}, add:{add} -> time :{result_time}')
     return result_time
 
 
@@ -71,7 +76,6 @@ def num_time_sub(num_time, sub):
         result_hours -= 1
 
     result_time = result_hours * 10000 + result_minutes * 100 + result_seconds
-    print(f'time : {num_time}, sub:{sub} -> time :{result_time}')
     return result_time
 
 
@@ -80,7 +84,6 @@ def num_time_to_second(num_time):
     time_min = int(num_time / 100) % 100
     time_hour = int(num_time / 10000)
     result_second = (time_hour * MINUTES_PER_HOUR * SECONDS_PER_MINUTE) + (time_min * SECONDS_PER_MINUTE) + time_sec
-    print(f'time:{num_time} -> second :{result_second}')
     return result_second
 
 
@@ -88,5 +91,4 @@ def num_time_to_minute(num_time):
     time_min = int(num_time / 100) % 100
     time_hour = int(num_time / 10000)
     result_minute = (time_hour * MINUTES_PER_HOUR) + time_min
-    print(f'time:{num_time} -> minute :{result_minute}')
     return result_minute
