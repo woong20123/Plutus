@@ -9,7 +9,7 @@ import logging
 import my_telegram as telegram
 import my_mongo
 import numpy
-import py_trade_util
+import py_trade_util as ptutil
 
 
 # code를 종목명으로 변환합니다.
@@ -55,18 +55,18 @@ if __name__ == "__main__":
     kiwoom.CommConnect(block=True)
 
     code_list = {}
-    for code in py_trade_util.Common.TRACKING_CODE_LIST.value:
+    for code in ptutil.Common.TRACKING_CODE_LIST.value:
         code_list[code] = None
 
     # 하루 총 390분
     # 11시 이후 전날 고점을 기준으로 합니다.
     start_time = 90000
-    make_date = py_trade_util.Common.TRACKING_DATE.value
+    make_date = ptutil.Common.TRACKING_DATE.value
     collection_name = 'one_minute'
 
     stock_db = my_mongo.get_database("stock")
 
-    logger.info(f'{make_date}의 작업을 시작. version:{py_trade_util.version()} ')
+    logger.info(f'{make_date}의 작업을 시작. version:{ptutil.version()} ')
     logger.info(f'{make_date}의 주식 데이터를 생성합니다')
 
     logger.info(f'[감시 목록]')
@@ -95,6 +95,7 @@ if __name__ == "__main__":
         ave10_price = int(numpy.mean(df2["현재가"][:10]))
         ave20_price = int(numpy.mean(df2["현재가"][:20]))
         ave60_price = int(numpy.mean(df2["현재가"][:60]))
+        ave120_price = int(numpy.mean(df2["현재가"][:120]))
         ave180_price = int(numpy.mean(df2["현재가"][:180]))
         past_ave_volume = int(numpy.mean(df2["거래량"][:390]))
 
@@ -117,6 +118,7 @@ if __name__ == "__main__":
             "ave10_price": ave10_price,
             "ave20_price": ave20_price,
             "ave60_price": ave60_price,
+            "ave120_price": ave120_price,
             "ave180_price": ave180_price,
             "past_ave_volume": past_ave_volume,
             "buy_check": [0, 0, 0, 0],

@@ -6,7 +6,6 @@ import datetime
 import my_telegram as telegram
 from datetime import datetime
 
-import py_trade_util
 import py_trade_util as ptutil
 import my_mongo
 import json
@@ -34,7 +33,7 @@ def make_logger():
     formatter = logging.Formatter('|%(asctime)s||%(name)s||%(levelname)s|%(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S'
                                   )
-    file_handler = logging.FileHandler('log/' + log_name + '_' + make_now_yymmdd() + '.log', mode='w+')  ## 파일 핸들러 생성
+    file_handler = logging.FileHandler('log/' + log_name + '_' + make_now_yymmdd() + '.log')  ## 파일 핸들러 생성
     file_handler.setFormatter(formatter)  ## 텍스트 포맷 설정
     log_instance.addHandler(file_handler)  ## 핸들러 등록
     log_instance.addHandler(logging.StreamHandler(sys.stdout))
@@ -88,8 +87,8 @@ class MyWindow(QMainWindow):
         self.logger = make_logger()
         # mongoDB 생성
         self.stock_db = my_mongo.get_database("stock")
-        self.tracking_code_list = py_trade_util.Common.TRACKING_CODE_LIST.value
-        self.traking_date = py_trade_util.Common.TRACKING_DATE.value
+        self.tracking_code_list = ptutil.Common.TRACKING_CODE_LIST.value
+        self.traking_date = ptutil.Common.TRACKING_DATE.value
         self.trade_start_time = 90000
         self.collection_name = 'one_minute'
         self.log_collection_name = 'one_minute_log'
@@ -102,9 +101,14 @@ class MyWindow(QMainWindow):
         disconnect_btn.move(20, 100)
         disconnect_btn.clicked.connect(self.disconnect_btn_clicked)
 
+        self.is_test = False
         btn_test = QPushButton("Test Run", self)
         btn_test.move(20, 150)
         btn_test.clicked.connect(self.bnt_test_clicked)
+
+        btn_test = QPushButton("Test Date Clear", self)
+        btn_test.move(20, 200)
+        btn_test.clicked.connect(self.bnt_test_data_clear_clicked)
 
         self.ocx = QAxWidget("KHOPENAPI.KHOpenAPICtrl.1")
         self.ocx.OnEventConnect.connect(self._handler_login)
@@ -224,8 +228,8 @@ class MyWindow(QMainWindow):
 
         if 1 == strategy_3minute["buy_send"] and 0 == strategy_3minute["sell_send"]:
             # [매도 로직 체크]
-            # 180선 평균 -> 3분봉 60선 보다 현재가가 작아지면 체크합니다.
-            if one_minute["cur_price"] <= one_minute["ave180_price"]:
+            # 3분봉 40선(1분 120선) 보다 현재가가 작아지면 체크합니다.
+            if one_minute["cur_price"] <= one_minute["ave120_price"]:
                 strategy_3minute["sell_check"] = 1
 
         # buy_check가 2번이상 연속으로 체크되면 메시지를 보냅니다.
@@ -236,7 +240,7 @@ class MyWindow(QMainWindow):
                                       f'[매수][{ptutil.num_time_to_str(time)}][3minute]고점 돌파\n'
                                       f'{one_minute_data_to_msg(one_minute)}'
                                       f'당일 고점 : {one_minute["today_high_price"]}원\n'
-                                      f'60선:{one_minute["ave180_price"]}원\n'
+                                      f'40선:{one_minute["ave120_price"]}원\n'
                                       f'2% 가격 : {int(one_minute["cur_price"] * 0.02)}원')
 
         # sell_check가 발견되면 메시지를 보냅니다.
@@ -244,9 +248,9 @@ class MyWindow(QMainWindow):
             strategy_3minute["sell_check"] = 0
             strategy_3minute["sell_send"] = 1
             telegram.send_bot_message(self.bot,
-                                      f'[매도][{ptutil.num_time_to_str(time)}][3minute]60선 추락\n'
+                                      f'[매도][{ptutil.num_time_to_str(time)}][3minute]40선 추락\n'
                                       f'{one_minute_data_to_msg(one_minute)}'
-                                      f'60선:{one_minute["ave180_price"]}원\n')
+                                      f'40선:{one_minute["ave120_price"]}원\n')
 
     def per_one_minute_logic(self, time):
         # 1분 간격으로 체크 하는 로직입니다.
@@ -283,12 +287,14 @@ class MyWindow(QMainWindow):
             one_minute['ave10_price'] = self.make_average(10, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave20_price'] = self.make_average(20, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave60_price'] = self.make_average(60, one_minute['prices'], one_minute['yesterday_prices'])
+            one_minute['ave120_price'] = self.make_average(120, one_minute['prices'], one_minute['yesterday_prices'])
             one_minute['ave180_price'] = self.make_average(180, one_minute['prices'], one_minute['yesterday_prices'])
 
             self.logger.info(
                 f'make ave, name:{one_minute["name"]}, ave5:{one_minute["ave5_price"]}, '
                 f'ave10:{one_minute["ave10_price"]}, ave20:{one_minute["ave20_price"]}, '
-                f'ave60:{one_minute["ave60_price"]}, ave180_price:{one_minute["ave180_price"]}')
+                f'ave60:{one_minute["ave60_price"]}, ave120:{one_minute["ave120_price"]}, '
+                f'ave180_price:{one_minute["ave180_price"]}')
 
             if one_minute["past_ave_volume"] == 0:
                 one_minute["past_ave_volume"] = int(numpy.mean(one_minute['volumes']))
@@ -386,16 +392,15 @@ class MyWindow(QMainWindow):
         self.logger.info(f'구독 해지 완료.')
 
     def bnt_test_clicked(self):
-        is_test = False
-        self.logger.info(f'테스트 로직 is_test : {is_test}')
+        self.logger.info(f'테스트 로직 is_test : {self.is_test}')
 
-        if is_test:
-            self.traking_date = 230808
+        if self.is_test:
+            self.traking_date = ptutil.Common.TRACKING_DATE.value
             self.update_time_per_minute = 90100
             real_data = {
                 "code": "071970",
                 "time": 90001,  # 체결 시간
-                "cur_price": 12400,  # 현재가
+                "cur_price": 12490,  # 현재가
                 "sell_quote": 0,  # 매도호가
                 "buy_quote": 0,  # 매수호가
                 "volume": 3790,  # 거래량
@@ -433,6 +438,17 @@ class MyWindow(QMainWindow):
                 self.data_update(real_data)
                 self.per_one_minute_logic(int(real_data["time"]))
                 t.sleep(0.1)
+
+    def bnt_test_data_clear_clicked(self):
+        self.logger.info(f'테스트 Data Clear is_test : {self.is_test}')
+
+        if self.is_test:
+            # mongoDB delete 수행
+            test_key = {"date": 230808}
+
+            my_mongo.delete_many_database(self.stock_db, self.collection_name, test_key)
+            my_mongo.delete_many_database(self.stock_db, self.log_collection_name, test_key)
+
 
     def CommmConnect(self):
         self.ocx.dynamicCall("CommConnect()")

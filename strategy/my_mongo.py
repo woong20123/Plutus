@@ -8,6 +8,11 @@ def get_database(database_name) :
     return db
 
 
+def delete_many_database(db, collect_name, match_key):
+    if collect_name in db.list_collection_names():
+        db[collect_name].delete_many(match_key)
+        return
+    raise Exception('collect이 확인되지 않습니다. ')
 
 # kospi200 collection에 데이터 추가 ( upsert )
 def upsert_to_database(db, collect_name, match_key, data):
