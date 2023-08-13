@@ -10,38 +10,21 @@ import my_telegram as telegram
 import my_mongo
 import numpy
 import py_trade_util as ptutil
-
-
-# code를 종목명으로 변환합니다.
-def transfer_code_to_name(kiwoom, code):
-    return kiwoom.GetMasterCodeName(code)
+import my_kiwoon_util as mkutil
 
 
 def make_logger():
-    log_instance = logging.getLogger(name='make_one_minute')
+    log_name = 'make_one_minute'
+    log_instance = logging.getLogger(name=log_name)
     log_instance.setLevel(logging.INFO)
     formatter = logging.Formatter('|%(asctime)s||%(name)s||%(levelname)s|%(message)s',
                                   datefmt='%Y-%m-%d %H:%M:%S'
                                   )
-    file_handler = logging.FileHandler('log/make_lion.log', mode='w+')  ## 파일 핸들러 생성
+    file_handler = logging.FileHandler('log/' + log_name + '_' + ptutil.make_now_yymmdd() + '.log')  ## 파일 핸들러 생성
     file_handler.setFormatter(formatter)  ## 텍스트 포맷 설정
     log_instance.addHandler(file_handler)  ## 핸들러 등록
     log_instance.addHandler(logging.StreamHandler(sys.stdout))
     return log_instance
-
-
-# 연결 상태 정보를 확인 합니다.
-def check_connect_state(kiwoom):
-    connect_state = ["미연결", "연결"]
-    return connect_state[kiwoom.GetConnectState()]
-
-
-def update_data_to_msg(update_data):
-    return (f'이름 : {update_data["name"]}\n'
-            f'현재가 : {update_data["current_price"]}원\n'
-            f'10선 : {update_data["ave10_price"]}원\n'
-            f'20선 : {update_data["ave20_price"]}원\n'
-            f'60선 : {update_data["ave60_price"]}원\n')
 
 
 if __name__ == "__main__":
@@ -72,10 +55,10 @@ if __name__ == "__main__":
     logger.info(f'[감시 목록]')
     for i, code in enumerate(code_list.keys()):
         code_list[code] = {"update_datas": [], "is_buy": 0, "is_sell": 0}
-        logger.info(f' - {transfer_code_to_name(kiwoom, code)}')
+        logger.info(f' - {mkutil.transfer_code_to_name(kiwoom, code)}')
 
     for i, code in enumerate(code_list.keys()):
-        logger.info(f"{i + 1}/{len(code_list)} {transfer_code_to_name(kiwoom, code)}")
+        logger.info(f"{i + 1}/{len(code_list)} {mkutil.transfer_code_to_name(kiwoom, code)}")
         df = kiwoom.block_request("opt10080",
                                   종목코드=code,
                                   틱범위="1",
@@ -101,7 +84,7 @@ if __name__ == "__main__":
 
         stock_data = {
             "code": code,
-            "name": transfer_code_to_name(kiwoom, code),
+            "name": mkutil.transfer_code_to_name(kiwoom, code),
             "date": make_date,
             "last_update": start_time,
             "prices": [],

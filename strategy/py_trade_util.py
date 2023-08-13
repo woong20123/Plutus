@@ -23,7 +23,15 @@ class Common(Enum):
 
 
 def version():
-    return "20230812.02"
+    return "20230813.01"
+
+
+def make_now_yymmdd():
+    return datetime.datetime.today().strftime('%Y-%m-%d')
+
+
+def make_now_hhmmss():
+    return datetime.datetime.today().strftime("%H%M%S")
 
 
 def isTradingTime() -> bool:
