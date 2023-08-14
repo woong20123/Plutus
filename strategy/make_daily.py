@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     search_date = 20230814
     search_end_date = 20210101
-    last_code_index = 53
+    last_code_index = 978
 
     kospi_list = kiwoom.GetCodeListByMarket('0')
     kosdaq_list = kiwoom.GetCodeListByMarket('10')
@@ -47,6 +47,23 @@ if __name__ == "__main__":
     for kosdaq in kosdaq_list:
         code_list[kosdaq] = None
 
+    # etf, elw, 리츠 종목 제외
+    etf_list = kiwoom.GetCodeListByMarket('8')
+    elw_list = kiwoom.GetCodeListByMarket('3')
+    reits_list = kiwoom.GetCodeListByMarket('6')
+
+
+    for etf in etf_list:
+        code_list.pop(etf, None)
+
+    for elw in elw_list:
+        code_list.pop(elw, None)
+
+    for reits in reits_list:
+        code_list.pop(reits, None)
+
+
+
     logger.info(f'make_daily 시작. version:{ptutil.version()} ')
     logger.info(f'주식 데이터를 생성합니다')
 
@@ -54,13 +71,18 @@ if __name__ == "__main__":
     collection_name = 'daily_data_v1'
 
     for code_index, code in enumerate(code_list.keys()):
-        logger.info(f"{code_index + 1}/{len(code_list)} 조회 시작 {mkutil.transfer_code_to_name(kiwoom, code)}")
+        name = mkutil.transfer_code_to_name(kiwoom, code)
+        logger.info(f"{code_index + 1}/{len(code_list)} 조회 시작 {name} code :{code}")
 
         base_date = search_date
         is_search_continue = True
         total_df = None
 
         if code_index < last_code_index:
+            continue
+            
+        if " ETN " in name or " ETN(H)" in name:
+            logger.info(f" ETN 종목 제외 {name} code :{code}")
             continue
 
         # 전체를 순회해서 데이터를 df에 모읍니다.
@@ -75,24 +97,24 @@ if __name__ == "__main__":
             try:
                 df2 = df.apply(pd.to_numeric)
                 df2 = df2.abs()
+
+                if total_df is None:
+                    total_df = df2
+                else:
+                    total_df = pd.concat([total_df, df2[1:]], ignore_index=True)
+
+                data_count = df2["현재가"].count()
+                base_date = df2["일자"][data_count - 1]
+
+
+                if data_count < 600 or base_date < search_end_date:
+                    is_search_continue = False
             except Exception as e:
                 logger.error(f'[에러 발생] 종목:{mkutil.transfer_code_to_name(kiwoom, code)}, code_index:{code_index}\n'
                              f'error {e}')
                 break
 
-            if total_df is None:
-                total_df = df2
-            else:
-                total_df = pd.concat([total_df, df2[1:]], ignore_index=True)
-
-            data_count = df2["현재가"].count()
-            base_date = df2["일자"][data_count - 1]
-
-            if data_count < 600 or base_date < search_end_date:
-                is_search_continue = False
-
-
-            time.sleep(0.5)
+            time.sleep(2.0)
 
         # total_df 데이터가 있다면 데이터를 가공합니다.
         # 가공한 데이터를 DB에 저장합니다.

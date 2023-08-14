@@ -223,6 +223,13 @@ class MyWindow(QMainWindow):
             if (one_minute["today_high_price"] < one_minute["cur_price"] and
                     one_minute["ave180_price"] < one_minute["cur_price"]):
                 strategy_3minute["buy_check"] += 1
+                if strategy_3minute["buy_check"] == 2:
+                    telegram.send_bot_message(self.bot,
+                                              f'[매수][{ptutil.num_time_to_str(time)}][3minute]고점 돌파 준비\n'
+                                              f'{one_minute_data_to_msg(one_minute)}'
+                                              f'당일 고점 : {one_minute["today_high_price"]}원\n'
+                                              f'40선:{one_minute["ave120_price"]}원\n'
+                                              f'2% 가격 : {int(one_minute["cur_price"] * 0.02)}원')
             else:
                 strategy_3minute["buy_check"] = 0
 
@@ -233,11 +240,11 @@ class MyWindow(QMainWindow):
                 strategy_3minute["sell_check"] = 1
 
         # buy_check가 2번이상 연속으로 체크되면 메시지를 보냅니다.
-        if 2 <= strategy_3minute["buy_check"]:
+        if 3 <= strategy_3minute["buy_check"]:
             strategy_3minute["buy_check"] = 0
             strategy_3minute["buy_send"] = 1
             telegram.send_bot_message(self.bot,
-                                      f'[매수][{ptutil.num_time_to_str(time)}][3minute]고점 돌파\n'
+                                      f'[매수][{ptutil.num_time_to_str(time)}][3minute]고점 돌파 확인\n'
                                       f'{one_minute_data_to_msg(one_minute)}'
                                       f'당일 고점 : {one_minute["today_high_price"]}원\n'
                                       f'40선:{one_minute["ave120_price"]}원\n'
