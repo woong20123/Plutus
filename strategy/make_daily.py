@@ -33,9 +33,9 @@ if __name__ == "__main__":
     kiwoom = Kiwoom()
     kiwoom.CommConnect(block=True)
 
-    search_date = 20230814
-    search_end_date = 20210101
-    last_code_index = 978
+    search_date = 20190805
+    search_end_date = 20140105
+    last_code_index = 1034
 
     kospi_list = kiwoom.GetCodeListByMarket('0')
     kosdaq_list = kiwoom.GetCodeListByMarket('10')
@@ -80,9 +80,17 @@ if __name__ == "__main__":
 
         if code_index < last_code_index:
             continue
-            
+
+        # ETN 종목을 제외합니다.
         if " ETN " in name or " ETN(H)" in name:
             logger.info(f" ETN 종목 제외 {name} code :{code}")
+            continue
+
+        # 종목의 상장일이 search_date보다 느리다면 제외
+        stock_listing_date = kiwoom.GetMasterListedStockDate(code)
+        nstock_listing_date = int(stock_listing_date.strftime('%Y%m%d'))
+        if search_date <= nstock_listing_date:
+            logger.info(f'nstock_listing_date({nstock_listing_date}) is later than search_date({search_date})')
             continue
 
         # 전체를 순회해서 데이터를 df에 모읍니다.
@@ -114,7 +122,7 @@ if __name__ == "__main__":
                              f'error {e}')
                 break
 
-            time.sleep(2.0)
+            time.sleep(2.5)
 
         # total_df 데이터가 있다면 데이터를 가공합니다.
         # 가공한 데이터를 DB에 저장합니다.
@@ -131,6 +139,11 @@ if __name__ == "__main__":
 
             for df_index in range(df_count - 200):
                 data_date = int(total_df["일자"][df_index])
+
+                if data_date < search_end_date:
+                    #logger.debug(f'data_date({data_date})가 search_end_date({search_end_date})보다 작습니다. ')
+                    continue
+
                 cur_price = int(total_df["현재가"][df_index])
                 start_price = int(total_df["시가"][df_index])
                 high_price = int(total_df["고가"][df_index])
