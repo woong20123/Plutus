@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
     search_date = 20190805
     search_end_date = 20140105
-    last_code_index = 1034
+    last_code_index = 1713
 
     kospi_list = kiwoom.GetCodeListByMarket('0')
     kosdaq_list = kiwoom.GetCodeListByMarket('10')

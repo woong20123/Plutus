@@ -67,7 +67,7 @@ if __name__ == "__main__":
         if ntime_to_year(ncur_time) != trading_day_data['year']:
             # mongo에 데이터를 upsert 합니다.
             trading_day_key = {'year': trading_day_data['year']}
-            find_count = my_mongo.upsert_to_database(stock_db, trading_day_collection_name, trading_day_key, trading_day_data)
+            my_mongo.upsert_to_database(stock_db, trading_day_collection_name, trading_day_key, trading_day_data)
             logger.info(f'upsert to mongo, trading_day_key: {trading_day_key}, data: {json.dumps(trading_day_data)}')
 
             # trading_day_data를 초기화 합니다.

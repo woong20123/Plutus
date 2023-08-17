@@ -7,6 +7,7 @@ from enum import Enum
 class CollectionInfo(Enum):
     DAILY_DATA = 'daily_data_v1'
     TRADING_DAY = 'trading_day'
+    VALIDATION_DATA = 'validation_data'
 
 
 

@@ -20,21 +20,6 @@ def get_score_serialize_price(prices, search_count) :
     return score
 
 
-trade_start_time = 94300
-update_time_per_minute = 105000
-
-update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 300)
-ptutil.num_time_to_minute(update_time_per_minute)
-update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 6300)
-ptutil.num_time_to_minute(update_time_per_minute)
-update_time_per_minute = ptutil.num_time_add(update_time_per_minute, 10500)
-ptutil.num_time_to_minute(update_time_per_minute)
-
-update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 19900)
-ptutil.num_time_to_minute(update_time_per_minute)
-update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 200)
-ptutil.num_time_to_minute(update_time_per_minute)
-update_time_per_minute = ptutil.num_time_sub(update_time_per_minute, 3000)
-ptutil.num_time_to_minute(update_time_per_minute)
-
+yesterday_cur_price = round(10000 / (500/10000 + 1), 0)
+print(f'yesterday_cur_price = {yesterday_cur_price}')
 
